@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { COLORS } from '@/game/config';
 import { ActionButton } from '@/components/ui/ActionButton';
@@ -8,10 +9,10 @@ import { t } from '@/lib/i18n';
 export default function NotFound() {
   const router = useRouter();
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root}>
       <Text style={styles.title}>{t('notFound.title')}</Text>
       <ActionButton label={t('notFound.back')} onPress={() => router.replace('/')} />
-    </View>
+    </SafeAreaView>
   );
 }
 

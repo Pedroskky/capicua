@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Canvas, Picture, type SkCanvas, type SkPicture } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
-import { TIMING } from '@/game/config';
+import { TIMING, type TableSkinId } from '@/game/config';
 import { placePiece, type End, type LinePiece, type Move } from '@/game/engine';
 import { fanLayout, hitFan, layoutLine, tileDrawSpec, type PlacedTile } from '@/game/layout';
 import { tileOf, type TileId } from '@/game/tiles';
@@ -23,6 +23,8 @@ export interface OtherHand {
 
 interface GameCanvasProps {
   regions: Regions;
+  /** Mesa equipada en la tienda. */
+  tableSkin: TableSkinId;
   line: LinePiece[];
   origin: number;
   viewer: number;
@@ -65,9 +67,9 @@ interface GhostSpot {
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
 
 export function GameCanvas(props: GameCanvasProps) {
-  const { regions, line, origin, viewer, bottomHand, bottomCount, playable, raised, others, boneyardCount, ghosts } = props;
+  const { regions, tableSkin, line, origin, viewer, bottomHand, bottomCount, playable, raised, others, boneyardCount, ghosts } = props;
   const { width, height, table, players } = regions;
-  const felt = useMemo(() => buildFelt(width, height, table), [width, height, table]);
+  const felt = useMemo(() => buildFelt(width, height, table, tableSkin), [width, height, table, tableSkin]);
   const empty = useMemo(() => emptyPicture(), []);
   const frame = useSharedValue<SkPicture>(empty);
 

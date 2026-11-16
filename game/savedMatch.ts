@@ -5,8 +5,11 @@ import { normalizeRules } from '@/game/rules';
 import { isChainValid, playersFor, type GameMode, type HandResult, type HandState, type LinePiece, type MatchState, type PublicEvent, type Team } from '@/game/engine';
 import { TILE_COUNT } from '@/game/tiles';
 
-/** v1 (fase 1): solo parejas. v2 (fase 2): modo de juego, nivel de la IA, pozo, ficha de salida y robos. */
-export const SAVED_MATCH_VERSION = 2;
+/**
+ * v1 (fase 1): solo parejas. v2 (fase 2): modo de juego, nivel de la IA, pozo, ficha de salida y robos.
+ * v3 (fase 3): pareja del torneo y manos/partida ya apuntadas en monedas y estadísticas.
+ */
+export const SAVED_MATCH_VERSION = 3;
 
 export interface SavedMatch {
   version: typeof SAVED_MATCH_VERSION;
@@ -93,7 +96,7 @@ function normalizeHand(raw: unknown, players: number): HandState | null {
 
 /** Devuelve la partida guardada lista para seguir, o null si no hay o está rota. */
 export function normalizeSavedMatch(raw: unknown): SavedMatch | null {
-  if (!isObj(raw) || (raw.version !== 1 && raw.version !== SAVED_MATCH_VERSION) || !isObj(raw.match)) return null;
+  if (!isObj(raw) || (raw.version !== 1 && raw.version !== 2 && raw.version !== SAVED_MATCH_VERSION) || !isObj(raw.match)) return null;
   const m = raw.match;
   // v1 era siempre parejas, sin pozo; la ficha de salida de la primera mano era el doble seis.
   const mode: GameMode = raw.version === 1 ? 'partners' : MODES.includes(m.mode as GameMode) ? (m.mode as GameMode) : 'partners';
@@ -122,6 +125,10 @@ export function normalizeSavedMatch(raw: unknown): SavedMatch | null {
     history,
     winnerTeam: m.winnerTeam as Team | null,
     zapatero: m.zapatero === true,
+    tournament: mode === 'partners' && isInt(m.tournament, 0, 11) ? m.tournament : null,
+    // Una partida de antes de la fase 3 no se apunta con efecto retroactivo: las manos ya jugadas cuentan como apuntadas.
+    recordedHands: raw.version === SAVED_MATCH_VERSION && isInt(m.recordedHands, 0, 1000) ? m.recordedHands : history.length,
+    recordedMatch: raw.version === SAVED_MATCH_VERSION ? m.recordedMatch === true : m.winnerTeam !== null && m.winnerTeam !== undefined,
   };
   return { version: SAVED_MATCH_VERSION, match, savedAt: typeof raw.savedAt === 'string' ? raw.savedAt : '' };
 }

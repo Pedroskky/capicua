@@ -32,17 +32,23 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
 type Mode = 'partners' | 'single' | 'hotseat';
 
 /** Nombre de cada asiento. Parejas: 0 = tú, 1 = Rafa, 2 = Carmen, 3 = Luis. Mano a mano: tú y Rafa. Dos en el teléfono: Jugador 1 y 2. */
-export function playerName(seat: number, mode: Mode = 'partners'): string {
+export function playerName(seat: number, mode: Mode = 'partners', rivalId?: string | null): string {
+  // En el torneo, los rivales son los dos de la pareja del barrio.
+  if (rivalId && mode === 'partners' && (seat === 1 || seat === 3)) return t(`rival.${rivalId}.${seat === 1 ? 'a' : 'b'}` as TranslationKey);
   if (mode === 'hotseat') return t(seat === 0 ? 'players.player1' : 'players.player2');
   const keys: TranslationKey[] = ['players.you', 'players.right', 'players.partner', 'players.left'];
   return t(keys[seat] ?? 'players.you');
 }
 
 /** Nombre de cada equipo («Nosotros/Ellos» en parejas; en mano a mano, el de cada jugador). */
-export function teamName(team: number, mode: Mode = 'partners'): string {
-  if (mode === 'partners') return t(team === 0 ? 'team.us' : 'team.them');
+export function teamName(team: number, mode: Mode = 'partners', rivalId?: string | null): string {
+  if (mode === 'partners') return team === 1 && rivalId ? rivalName(rivalId) : t(team === 0 ? 'team.us' : 'team.them');
   if (mode === 'single') return team === 0 ? t('team.you') : playerName(1, mode);
   return playerName(team, mode);
+}
+
+export function rivalName(id: string): string {
+  return t(`rival.${id}` as TranslationKey);
 }
 
 export function levelName(level: 'beginner' | 'plaza' | 'veteran' | 'master', short = false): string {

@@ -5,38 +5,71 @@ import type { HandResult, MatchState } from '@/game/engine';
 import { tileOf } from '@/game/tiles';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { FONTS } from '@/components/ui/theme';
-import { playerName, t, teamName } from '@/lib/i18n';
+import { playerName, t, teamName, type TranslationKey } from '@/lib/i18n';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { ActivityReport } from '@/game/activity';
+import { rival } from '@/game/tournament';
 
 interface HandSummaryProps {
   match: MatchState;
   onNext: () => void;
   /** «Revisar la mano»: ver la mesa con todas las fichas descubiertas. */
   onReview: () => void;
+  /** Monedas y retos que dio esta mano (null mientras se apunta o si no cuenta). */
+  report?: ActivityReport | null;
 }
 
-export function headline(result: HandResult, mode: MatchState['mode']): string {
-  if (result.kind === 'domino') return t('hand.domino', { name: playerName(result.winnerPlayer ?? 0, mode) });
+/** Líneas de monedas, retos completados y logros nuevos de un informe (también para el resultado). */
+export function RewardLines({ report }: { report: ActivityReport }) {
+  if (report.coins === 0 && report.completedChallenges.length === 0 && report.newAchievements.length === 0) return null;
+  return (
+    <View style={styles.rewards}>
+      {report.breakdown.map((b, i) => (
+        <View key={i} style={styles.row}>
+          <Text style={styles.label}>{t(`reward.${b.reason}` as TranslationKey, { n: report.streakDays ?? 0 })}</Text>
+          <Text style={[styles.value, styles.bonus]}>+{b.amount}</Text>
+        </View>
+      ))}
+      {report.completedChallenges.map((c) => (
+        <Text key={c.id} style={styles.rewardNote}>
+          {t('reward.challengeDone', { name: t(`challenge.${c.kind}` as TranslationKey, { n: c.target }) })}
+        </Text>
+      ))}
+      {report.newAchievements.map((id) => (
+        <Text key={id} style={styles.rewardNote}>
+          {t('reward.achievement', { name: t(`ach.${id}` as TranslationKey) })}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+export function headline(result: HandResult, mode: MatchState['mode'], rivalId: string | null = null): string {
+  if (result.kind === 'domino') return t('hand.domino', { name: playerName(result.winnerPlayer ?? 0, mode, rivalId) });
   return result.winnerTeam === null ? t('hand.tranqueTie') : t('hand.tranque');
 }
 
 function winsLine(match: MatchState, team: 0 | 1): string {
+  if (match.mode === 'partners' && match.tournament !== null && team === 1) return t('hand.winsPlayer', { name: teamName(1, 'partners', rival(match.tournament).id) });
   if (match.mode === 'partners') return team === 0 ? t('hand.winsUs') : t('hand.winsThem');
   return t('hand.winsPlayer', { name: teamName(team, match.mode) });
 }
 
-export function HandSummary({ match, onNext, onReview }: HandSummaryProps) {
+export function HandSummary({ match, onNext, onReview, report }: HandSummaryProps) {
+  const insets = useSafeAreaInsets();
   const mode = match.mode;
+  const rivalId = match.tournament !== null ? rival(match.tournament).id : null;
   const seats = match.hand.hands.map((_, i) => i);
   const result = match.hand.result;
   if (!result) return null;
   const finished = match.winnerTeam !== null;
   const teamColor = result.winnerTeam === 0 ? COLORS.us : COLORS.them;
   return (
-    <View style={styles.backdrop}>
+    <View style={[styles.backdrop, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
       <View style={styles.card}>
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.title}>{t('hand.title', { n: match.hand.number })}</Text>
-          <Text style={styles.headline}>{headline(result, mode)}</Text>
+          <Text style={styles.headline}>{headline(result, mode, rivalId)}</Text>
           {result.winnerTeam !== null && (
             <Text style={[styles.winner, { color: teamColor }]}>{winsLine(match, result.winnerTeam)}</Text>
           )}
@@ -44,7 +77,7 @@ export function HandSummary({ match, onNext, onReview }: HandSummaryProps) {
           <Text style={styles.section}>{t('hand.pipsTitle')}</Text>
           {seats.map((seat) => (
             <View key={seat} style={styles.row}>
-              <Text style={[styles.player, { color: seat % 2 === 0 ? COLORS.us : COLORS.them }]}>{playerName(seat, mode)}</Text>
+              <Text style={[styles.player, { color: seat % 2 === 0 ? COLORS.us : COLORS.them }]}>{playerName(seat, mode, rivalId)}</Text>
               <Text style={styles.tiles} numberOfLines={2}>
                 {match.hand.hands[seat].length === 0
                   ? t('hand.noTiles')
@@ -54,8 +87,8 @@ export function HandSummary({ match, onNext, onReview }: HandSummaryProps) {
             </View>
           ))}
           <View style={styles.row}>
-            <Text style={styles.team}>{t('hand.pipsTeam', { team: teamName(0, mode), n: result.teamPips[0] })}</Text>
-            <Text style={styles.team}>{t('hand.pipsTeam', { team: teamName(1, mode), n: result.teamPips[1] })}</Text>
+            <Text style={styles.team}>{t('hand.pipsTeam', { team: teamName(0, mode, rivalId), n: result.teamPips[0] })}</Text>
+            <Text style={styles.team}>{t('hand.pipsTeam', { team: teamName(1, mode, rivalId), n: result.teamPips[1] })}</Text>
           </View>
 
           <View style={styles.divider} />
@@ -74,15 +107,17 @@ export function HandSummary({ match, onNext, onReview }: HandSummaryProps) {
             <Text style={styles.totalValue}>{result.total}</Text>
           </View>
 
+          {report && <RewardLines report={report} />}
+
           <View style={styles.divider} />
           <Text style={styles.section}>{t('hand.score')}</Text>
           <View style={styles.scoreRow}>
             <View style={styles.scoreBox}>
-              <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{teamName(0, mode)}</Text>
+              <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{teamName(0, mode, rivalId)}</Text>
               <Text style={styles.score}>{match.scores[0]}</Text>
             </View>
             <View style={styles.scoreBox}>
-              <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{teamName(1, mode)}</Text>
+              <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{teamName(1, mode, rivalId)}</Text>
               <Text style={styles.score}>{match.scores[1]}</Text>
             </View>
           </View>
@@ -179,6 +214,15 @@ const styles = StyleSheet.create({
   },
   bonus: {
     color: COLORS.accent,
+  },
+  rewards: {
+    marginTop: 4,
+    gap: 4,
+  },
+  rewardNote: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.us,
   },
   totalLabel: {
     fontSize: 17,

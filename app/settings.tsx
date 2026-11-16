@@ -13,6 +13,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { DEV_MENU } from '@/lib/devMenu';
 import { setForcedScenario } from '@/lib/devForced';
 import { matchStore } from '@/lib/matchStore';
+import { devGiveCoins, devResetChallenges, devUnlockTournament } from '@/lib/activity';
 import type { LanguagePreference } from '@/lib/settings';
 import { levelName, t } from '@/lib/i18n';
 
@@ -151,6 +152,9 @@ export default function SettingsScreen() {
               <ActionButton label={t('settings.devForceTranque')} variant="secondary" onPress={() => force('tranque')} />
               <ActionButton label={t('settings.devForceCapicua')} variant="secondary" onPress={() => force('capicua')} />
               <Text style={styles.note}>{t('settings.devForceHint')}</Text>
+              <ActionButton label={t('settings.devCoins')} variant="secondary" onPress={() => devGiveCoins(5000).then(() => setDevMessage(t('settings.devDone')))} />
+              <ActionButton label={t('settings.devUnlockTour')} variant="secondary" onPress={() => devUnlockTournament().then(() => setDevMessage(t('settings.devDone')))} />
+              <ActionButton label={t('settings.devResetChallenges')} variant="secondary" onPress={() => devResetChallenges().then(() => setDevMessage(t('settings.devDone')))} />
               <ActionButton
                 label={t('settings.devClear')}
                 variant="danger"

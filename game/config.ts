@@ -148,3 +148,104 @@ export const SOUND_VOLUME = {
   domino: 0.9,
   music: 0.32,
 } as const;
+
+// --- Fase 3: monedas, tienda, torneo, retos, racha, ELO y logros ---------------------------------------------
+
+/** Monedas que se ganan jugando contra la máquina (Dos en el teléfono no da monedas). */
+export const ECONOMY = {
+  /** Por cada mano que gana tu pareja (o tú, en mano a mano). */
+  handWon: 5,
+  /** Por partida ganada, según el nivel de la máquina. */
+  matchWon: { beginner: 20, plaza: 30, veteran: 45, master: 60 } as Record<AiLevel, number>,
+  /** Extra por cada capicúa de tu pareja. */
+  capicua: 15,
+  /** Extra por dar zapatero. */
+  zapatero: 40,
+} as const;
+
+export type ShopCategory = 'tiles' | 'table' | 'phrases';
+export type TileSkinId = 'ivory' | 'wood' | 'neon' | 'gold' | 'temple';
+export type TableSkinId = 'felt' | 'patio' | 'beach';
+export type PhrasePackId = 'basic' | 'barrio' | 'compadre';
+
+export interface ShopItem {
+  id: string;
+  category: ShopCategory;
+  price: number;
+}
+
+/** Catálogo de la tienda (los nombres en `shop.item.<id>`). Lo gratis viene ya comprado. */
+export const SHOP_ITEMS: ShopItem[] = [
+  { id: 'ivory', category: 'tiles', price: 0 },
+  { id: 'wood', category: 'tiles', price: 300 },
+  { id: 'neon', category: 'tiles', price: 600 },
+  { id: 'gold', category: 'tiles', price: 1500 },
+  { id: 'temple', category: 'tiles', price: 900 },
+  { id: 'felt', category: 'table', price: 0 },
+  { id: 'patio', category: 'table', price: 400 },
+  { id: 'beach', category: 'table', price: 700 },
+  { id: 'basic', category: 'phrases', price: 0 },
+  { id: 'barrio', category: 'phrases', price: 250 },
+  { id: 'compadre', category: 'phrases', price: 450 },
+];
+
+/** Frases de cada paquete por momento (claves `phrase.<paquete>.<momento><n>` en es.ts/en.ts). */
+export const PHRASE_MOMENTS = ['play', 'domino', 'tranque', 'capicua', 'pass'] as const;
+export type PhraseMoment = (typeof PHRASE_MOMENTS)[number];
+export const PHRASES_PER_MOMENT: Record<PhraseMoment, number> = { play: 3, domino: 2, tranque: 2, capicua: 1, pass: 2 };
+/** Probabilidad de que Carmen diga algo al poner una ficha (en el resto de momentos siempre habla). */
+export const PHRASE_PLAY_CHANCE = 0.35;
+
+/** Torneo del barrio: 12 parejas. Monedas por ganarle a cada una (la primera vez cuenta el premio entero). */
+export const TOURNAMENT = {
+  pairs: 12,
+  /** Premio por vencer a la pareja i: base + paso · i. Repetir una ya vencida da la mitad. */
+  rewardBase: 60,
+  rewardStep: 20,
+  /** Estrellas según el margen (puntos nuestros − suyos): ≥ dos estrellas, ≥ tres estrellas (o zapatero). */
+  twoStarMargin: 30,
+  threeStarMargin: 60,
+  /** Premio extra por ganar el torneo completo. */
+  championBonus: 500,
+  targetScore: 100,
+} as const;
+
+export type ChallengeKind =
+  | 'winMatches'
+  | 'winHands'
+  | 'capicua'
+  | 'tranqueWin'
+  | 'dominoSelf'
+  | 'zapatero'
+  | 'playMatches'
+  | 'winVeteranPlus'
+  | 'tournamentWin'
+  | 'scorePoints'
+  | 'winSingle';
+
+/** Plantillas de los retos diarios: objetivo y monedas por dificultad. */
+export const CHALLENGE_TEMPLATES: { kind: ChallengeKind; targets: number[]; rewards: number[] }[] = [
+  { kind: 'winMatches', targets: [1, 2, 3], rewards: [40, 70, 100] },
+  { kind: 'winHands', targets: [3, 5, 8], rewards: [30, 50, 80] },
+  { kind: 'capicua', targets: [1], rewards: [80] },
+  { kind: 'tranqueWin', targets: [1, 2], rewards: [50, 90] },
+  { kind: 'dominoSelf', targets: [2, 4], rewards: [40, 70] },
+  { kind: 'zapatero', targets: [1], rewards: [120] },
+  { kind: 'playMatches', targets: [1, 2, 3], rewards: [25, 45, 65] },
+  { kind: 'winVeteranPlus', targets: [1], rewards: [80] },
+  { kind: 'tournamentWin', targets: [1], rewards: [60] },
+  { kind: 'scorePoints', targets: [100, 200, 300], rewards: [40, 70, 100] },
+  { kind: 'winSingle', targets: [1, 2], rewards: [40, 70] },
+];
+export const DAILY_CHALLENGE_COUNT = 3;
+/** Días que se recuerdan los retos cobrados (para que cambiar la hora no dé premios dobles). */
+export const CHALLENGE_HISTORY_DAYS = 7;
+
+/** Premio de la racha según los días seguidos (a partir del último, se repite). */
+export const STREAK_REWARDS = [20, 30, 40, 50, 60, 80, 100];
+
+/** ELO contra la máquina (fórmula de Elo). */
+export const ELO_START = 1000;
+export const ELO_K = 32;
+export const ELO_HISTORY = 60;
+export const LEVEL_ELO: Record<AiLevel, number> = { beginner: 800, plaza: 1100, veteran: 1400, master: 1700 };
