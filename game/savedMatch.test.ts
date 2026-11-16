@@ -52,3 +52,27 @@ describe('partida guardada', () => {
     expect(rules.targetScore).toBe(100);
   });
 });
+
+describe('migración de la partida guardada', () => {
+  it('una partida de la fase 1 (v1) se recupera como parejas sin pozo', () => {
+    const m = midGame();
+    const v1 = JSON.parse(JSON.stringify({ version: 1, match: m, savedAt: '' }));
+    delete v1.match.mode;
+    delete v1.match.aiLevel;
+    delete v1.match.hand.boneyard;
+    delete v1.match.hand.opening;
+    const loaded = normalizeSavedMatch(v1)!;
+    expect(loaded.version).toBe(2);
+    expect(loaded.match.mode).toBe('partners');
+    expect(loaded.match.hand.boneyard).toEqual([]);
+    expect(loaded.match.hand.hands).toEqual(m.hand.hands);
+  });
+
+  it('una partida mano a mano con pozo se guarda y se recupera', () => {
+    let m = createMatch(5, undefined, { mode: 'single', aiLevel: 'master' });
+    const mv = chooseMove(aiView(m, m.hand.turn));
+    if (mv) m = playMove(m, mv);
+    const back = normalizeSavedMatch(JSON.parse(JSON.stringify(toSavedMatch(m))))!.match;
+    expect(back).toEqual(m);
+  });
+});

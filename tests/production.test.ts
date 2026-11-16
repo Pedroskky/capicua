@@ -44,6 +44,6 @@ describe('EAS y Google Play', () => {
     const settings = readFileSync(join(ROOT, 'app/settings.tsx'), 'utf8');
     const devBlock = settings.indexOf('{DEV_MENU && (');
     expect(devBlock).toBeGreaterThan(0);
-    for (const tool of ['devClear', 'devCrash']) expect(settings.indexOf(tool, devBlock), tool).toBeGreaterThan(devBlock);
+    for (const tool of ['devTableNumbers', 'devShowHands', "force('tranque')", "force('capicua')", 'devClear', 'devCrash']) expect(settings.indexOf(tool, devBlock), tool).toBeGreaterThan(devBlock);
   });
 });

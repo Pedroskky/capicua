@@ -2,24 +2,27 @@
 // Brilla cuando le toca y enseña el bocadillo «¡Paso!».
 import { StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '@/game/config';
-import { teamOf } from '@/game/engine';
-import { playerName, t } from '@/lib/i18n';
+import { t } from '@/lib/i18n';
 
 interface PlayerBadgeProps {
-  seat: number;
+  /** Posición en pantalla: 1 = derecha, 2 = arriba, 3 = izquierda (el bocadillo sale hacia la mesa). */
+  slot: number;
+  name: string;
+  /** Equipo 0 (verde) o 1 (naranja). */
+  team: number;
   x: number;
   y: number;
   tiles: number;
   active: boolean;
-  passed: boolean;
+  /** Bocadillo («¡Paso!», «¡Robo!») o null. */
+  bubble: string | null;
 }
 
 const SIZE = 40;
 const WIDTH = 84;
 
-export function PlayerBadge({ seat, x, y, tiles, active, passed }: PlayerBadgeProps) {
-  const color = teamOf(seat) === 0 ? COLORS.us : COLORS.them;
-  const name = playerName(seat);
+export function PlayerBadge({ slot, name, team, x, y, tiles, active, bubble }: PlayerBadgeProps) {
+  const color = team === 0 ? COLORS.us : COLORS.them;
   return (
     <View pointerEvents="none" style={[styles.root, { left: x - WIDTH / 2, top: y - SIZE / 2 }]}>
       <View style={[styles.avatar, { borderColor: active ? COLORS.playable : color }, active && styles.active]}>
@@ -29,9 +32,9 @@ export function PlayerBadge({ seat, x, y, tiles, active, passed }: PlayerBadgePr
         {name}
       </Text>
       <Text style={styles.count}>{tiles === 1 ? t('players.tile') : t('players.tiles', { n: tiles })}</Text>
-      {passed && (
-        <View style={[styles.bubble, seat === 2 ? styles.bubbleBelow : seat === 1 ? styles.bubbleLeft : styles.bubbleRight]}>
-          <Text style={styles.bubbleText}>{t('call.pass')}</Text>
+      {bubble && (
+        <View style={[styles.bubble, slot === 2 ? styles.bubbleBelow : slot === 1 ? styles.bubbleLeft : styles.bubbleRight]}>
+          <Text style={styles.bubbleText}>{bubble}</Text>
         </View>
       )}
     </View>

@@ -1,38 +1,48 @@
-// Pantalla de la partida: lleva el turno (tú tocas una ficha, la máquina piensa con su velocidad), los avisos
-// («¡Paso!», «¡Capicúa!», «¡Tranca!», «¡Zapatero!»), el sonido y el guardado (tras cada jugada y al ir al fondo).
+// Pantalla de la partida: lleva el turno (tú tocas una ficha, la máquina piensa con su nivel y su velocidad), robar
+// del pozo (mano a mano), pasar el teléfono (dos en el teléfono), pista, contador de fichas, «Revisar la mano», los
+// avisos («¡Paso!», «¡Capicúa!», «¡Tranca!», «¡Zapatero!»), el sonido y el guardado (tras cada jugada y al ir al fondo).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeOut, ZoomIn } from 'react-native-reanimated';
-import { X } from 'lucide-react-native';
+import { Lightbulb, X } from 'lucide-react-native';
 import { AI_DELAY_MS, COLORS, TIMING } from '@/game/config';
-import { aiView, chooseMove } from '@/game/ai';
+import { aiLevelFor, aiView, bestMoveHint, chooseMove } from '@/game/ai';
 import {
-  canPlay,
+  canDraw,
   createMatch,
+  drawTile,
   endsForTile,
+  isHumanSeat,
   legalMoves,
   lineEnds,
+  mustPass,
   passTurn,
+  playedByNumber,
   playMove,
   startNextHand,
+  teamOf,
   type End,
   type MatchState,
   type Move,
 } from '@/game/engine';
-import { DOUBLE_SIX, type TileId } from '@/game/tiles';
+import { scenarioMove } from '@/game/devScenarios';
+import type { TileId } from '@/game/tiles';
 import { toSavedMatch } from '@/game/savedMatch';
-import { GameCanvas } from '@/components/game/GameCanvas';
+import { GameCanvas, type OtherHand } from '@/components/game/GameCanvas';
 import { HandSummary } from '@/components/game/HandSummary';
 import { PlayerBadge } from '@/components/game/PlayerBadge';
-import { computeRegions } from '@/components/game/regions';
+import { TableNumbers } from '@/components/game/TableNumbers';
+import { computeRegions, slotOf } from '@/components/game/regions';
+import { ActionButton } from '@/components/ui/ActionButton';
 import { FONTS, shadowText } from '@/components/ui/theme';
 import { useSettings } from '@/hooks/useSettings';
 import { createMusic, createSoundBank, vibrate, type MusicPlayer, type SoundBank, type SoundName } from '@/lib/feedback';
 import { matchStore } from '@/lib/matchStore';
-import { playerName, t } from '@/lib/i18n';
+import { playerName, t, teamName } from '@/lib/i18n';
 import { DEV_MENU } from '@/lib/devMenu';
+import { takeForcedScenario } from '@/lib/devForced';
 
 export function newSeed(): number {
   return (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
@@ -50,13 +60,27 @@ export default function GameScreen() {
   const { settings } = useSettings();
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [match, setMatch] = useState<MatchState>(initialMatch);
+  const players = match.hand.hands.length;
+  const hotseat = match.mode === 'hotseat';
+  /** Quién mira la pantalla (su mano va abajo). En dos en el teléfono cambia con cada turno. */
+  const [viewer, setViewer] = useState(() => (hotseat ? match.hand.turn : 0));
+  /** Mano oculta mientras se pasa el teléfono. */
+  const [covered, setCovered] = useState(() => hotseat && !match.hand.result);
   const [pending, setPending] = useState<TileId | null>(null);
-  const [passed, setPassed] = useState<number[]>([]);
+  const [hint, setHint] = useState<Move | null>(null);
+  const [bubbles, setBubbles] = useState<Record<number, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
 
   const live = useRef({ match, settings });
   live.current = { match, settings };
+
+  // Partida forzada desde el menú de desarrollo: la pista marca la jugada que provoca el tranque o la capicúa.
+  useEffect(() => {
+    const kind = DEV_MENU ? takeForcedScenario() : null;
+    if (kind) setHint(scenarioMove(live.current.match, kind));
+  }, []);
 
   // Sonido y música (opcionales: si fallan, la partida sigue).
   const sounds = useRef<SoundBank | null>(null);
@@ -102,36 +126,60 @@ export default function GameScreen() {
     if (live.current.match.hand.line.length === 0) play('shuffle');
   }, [handNumber, play]);
 
-  const showPass = useCallback(
-    (seat: number) => {
-      play('pass');
-      setPassed((list) => [...list.filter((s) => s !== seat), seat]);
-      setTimeout(() => setPassed((list) => list.filter((s) => s !== seat)), TIMING.passBubbleMs);
+  const showBubble = useCallback((seat: number, text: string) => {
+    setBubbles((b) => ({ ...b, [seat]: text }));
+    setTimeout(
+      () =>
+        setBubbles((b) => {
+          const next = { ...b };
+          delete next[seat];
+          return next;
+        }),
+      TIMING.passBubbleMs,
+    );
+  }, []);
+
+  /** Juega, roba o pasa el jugador del turno. `move` null = robar si se puede, si no pasar. */
+  const doMove = useCallback(
+    (move: Move | null) => {
+      const current = live.current.match;
+      const seat = current.hand.turn;
+      setPending(null);
+      setHint(null);
+      try {
+        if (move) setMatch(playMove(current, move));
+        else if (canDraw(current)) {
+          setMatch(drawTile(current));
+          play('clac');
+          if (!isHumanSeat(current, seat)) showBubble(seat, t('call.draw'));
+        } else {
+          setMatch(passTurn(current));
+          play('pass');
+          showBubble(seat, t('call.pass'));
+        }
+      } catch (error) {
+        // Nunca debería pasar (el motor ya validó); en desarrollo se avisa.
+        if (DEV_MENU) console.warn('Jugada rechazada', error);
+      }
     },
-    [play],
+    [play, showBubble],
   );
 
-  const doMove = useCallback((move: Move | null) => {
-    const current = live.current.match;
-    const seat = current.hand.turn;
-    try {
-      if (move) setMatch(playMove(current, move));
-      else {
-        setMatch(passTurn(current));
-        showPass(seat);
-      }
-    } catch (error) {
-      // Nunca debería pasar (el motor ya validó); en desarrollo se avisa.
-      if (DEV_MENU) console.warn('Jugada rechazada', error);
-    }
-  }, [showPass]);
+  // Dos en el teléfono: cuando le toca a la otra persona, se tapa la mano hasta que coja el teléfono.
+  const turn = match.hand.turn;
+  const handOver = match.hand.result !== null;
+  useEffect(() => {
+    if (!hotseat || handOver || turn === viewer) return;
+    const timer = setTimeout(() => setCovered(true), TIMING.slideMs + 250);
+    return () => clearTimeout(timer);
+  }, [hotseat, handOver, turn, viewer]);
 
-  // Quién juega ahora: la máquina tras pensar, tú pasas solo si no puedes jugar, y al final de la mano los avisos.
+  // Quién juega ahora: la máquina tras pensar, tú pasas solo si no puedes jugar ni robar, y al final de la mano los avisos.
   useEffect(() => {
     const hand = match.hand;
     const timers: ReturnType<typeof setTimeout>[] = [];
     if (hand.result) {
-      if (showSummary) return;
+      if (showSummary || reviewing) return;
       const calls: string[] = [];
       if (hand.result.capicua) calls.push(t('call.capicua'));
       else if (hand.result.kind === 'domino') calls.push(t('call.domino'));
@@ -154,42 +202,57 @@ export default function GameScreen() {
           setShowSummary(true);
         }, at),
       );
-    } else if (hand.turn !== 0) {
-      timers.push(setTimeout(() => doMove(chooseMove(aiView(match, hand.turn))), AI_DELAY_MS[settings.aiSpeed]));
-    } else if (!canPlay(match, 0)) {
+    } else if (!isHumanSeat(match, hand.turn)) {
+      const delay = AI_DELAY_MS[settings.aiSpeed] * (canDraw(match) ? 0.5 : 1);
+      timers.push(setTimeout(() => doMove(chooseMove(aiView(match, hand.turn, aiLevelFor(match, hand.turn)))), delay));
+    } else if (hand.turn === viewer && !covered && mustPass(match)) {
       timers.push(setTimeout(() => doMove(null), TIMING.humanAutoPassMs));
     }
     return () => timers.forEach(clearTimeout);
-  }, [match, showSummary, settings.aiSpeed, doMove, play, buzz]);
+  }, [match, showSummary, reviewing, settings.aiSpeed, doMove, play, buzz, viewer, covered]);
 
-  const myTurn = !match.hand.result && match.hand.turn === 0;
-  const playable = useMemo(() => (myTurn ? new Set(legalMoves(match, 0).map((m) => m.tile)) : null), [match, myTurn]);
+  const myTurn = !match.hand.result && !covered && match.hand.turn === viewer && isHumanSeat(match, viewer);
+  const playable = useMemo(() => (myTurn ? new Set(legalMoves(match, viewer).map((m) => m.tile)) : null), [match, myTurn, viewer]);
+  const drawable = myTurn && canDraw(match);
 
   const onTapTile = useCallback(
     (tile: TileId) => {
       const current = live.current.match;
-      if (current.hand.result || current.hand.turn !== 0) return;
-      const ends = endsForTile(current, 0, tile);
+      if (current.hand.result || current.hand.turn !== viewer || covered) return;
+      const ends = endsForTile(current, viewer, tile);
       if (ends.length === 0) {
         buzz('medium');
         return;
       }
       buzz('tap');
       if (ends.length === 2) {
+        setHint(null);
         setPending((p) => (p === tile ? null : tile));
         return;
       }
-      setPending(null);
       doMove({ tile, end: ends[0] });
     },
-    [buzz, doMove],
+    [buzz, doMove, viewer, covered],
   );
 
-  const chooseEnd = (end: End) => {
-    if (pending === null) return;
-    const tile = pending;
+  const chooseEnd = useCallback(
+    (end: End) => {
+      const current = live.current.match;
+      if (pending !== null) {
+        doMove({ tile: pending, end });
+        return;
+      }
+      // Tocar en la mesa el sitio que marca la pista también juega.
+      if (hint && hint.end === end && current.hand.turn === viewer) doMove(hint);
+    },
+    [pending, hint, doMove, viewer],
+  );
+
+  const askHint = () => {
+    const best = bestMoveHint(match, viewer);
     setPending(null);
-    doMove({ tile, end });
+    setHint(best);
+    buzz('tap');
   };
 
   const onLanded = useCallback(() => {
@@ -201,8 +264,14 @@ export default function GameScreen() {
       router.replace('/result');
       return;
     }
+    const next = startNextHand(match);
     setShowSummary(false);
-    setMatch(startNextHand(match));
+    setReviewing(false);
+    if (hotseat) {
+      setViewer(next.hand.turn);
+      setCovered(true);
+    }
+    setMatch(next);
   };
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -210,18 +279,34 @@ export default function GameScreen() {
     if (!size || size.w !== width || size.h !== height) setSize({ w: width, h: height });
   };
 
-  const regions = useMemo(() => (size ? computeRegions(size.w, size.h, insets.top, insets.bottom) : null), [size, insets.top, insets.bottom]);
+  const regions = useMemo(
+    () => (size ? computeRegions(size.w, size.h, insets.top, insets.bottom, players) : null),
+    [size, insets.top, insets.bottom, players],
+  );
   const ends = lineEnds(match.hand.line);
-  const counts = useMemo(() => match.hand.hands.map((h) => h.length), [match.hand.hands]);
+  const hands = match.hand.hands;
+  const reveal = reviewing || (DEV_MENU && settings.devShowHands);
+  const others = useMemo<OtherHand[]>(
+    () =>
+      hands
+        .map((h, seat) => ({ seat, count: h.length, tiles: reveal ? h : null }))
+        .filter((o) => o.seat !== viewer),
+    [hands, viewer, reveal],
+  );
+  const ghosts = useMemo<Move[]>(() => {
+    if (pending !== null) return endsForTile(match, viewer, pending).map((end) => ({ tile: pending, end }));
+    if (hint && match.hand.line.length > 0) return [hint];
+    return [];
+  }, [pending, hint, match, viewer]);
+  const counts = playedByNumber(match.hand.line);
 
   let status: string;
+  const starterName = playerName(match.hand.starter, match.mode);
   if (match.hand.line.length === 0) {
-    const name = playerName(match.hand.starter);
-    status = match.hand.hands[match.hand.starter].includes(DOUBLE_SIX) && match.hand.number === 1
-      ? t('game.opening', { name })
-      : t('game.openingAny', { name });
+    status = match.hand.opening !== null && match.hand.number === 1 ? t('game.opening', { name: starterName }) : t('game.openingAny', { name: starterName });
     if (myTurn) status = `${status} · ${t('game.yourTurn')}`;
-  } else status = myTurn ? t('game.yourTurn') : t('game.waiting', { name: playerName(match.hand.turn) });
+  } else if (match.hand.result) status = '';
+  else status = myTurn ? t('game.yourTurn') : t('game.waiting', { name: playerName(match.hand.turn, match.mode) });
 
   return (
     <View style={styles.root} onLayout={onLayout}>
@@ -231,28 +316,78 @@ export default function GameScreen() {
             regions={regions}
             line={match.hand.line}
             origin={match.hand.origin}
-            myHand={match.hand.hands[0]}
-            playable={playable}
-            pending={pending}
-            handCounts={counts}
+            viewer={viewer}
+            bottomHand={covered ? null : hands[viewer]}
+            bottomCount={hands[viewer].length}
+            playable={reviewing ? null : playable}
+            raised={pending ?? hint?.tile ?? null}
+            others={others}
+            boneyardCount={match.hand.boneyard.length}
+            ghosts={reviewing ? [] : ghosts}
             onTapTile={onTapTile}
+            onTapGhost={chooseEnd}
             onLanded={onLanded}
           />
-          {[1, 2, 3].map((seat) => (
-            <PlayerBadge
-              key={seat}
-              seat={seat}
-              x={regions.seats[seat].x}
-              y={regions.seats[seat].y}
-              tiles={counts[seat]}
-              active={!match.hand.result && match.hand.turn === seat}
-              passed={passed.includes(seat)}
-            />
-          ))}
-          <View pointerEvents="none" style={[styles.statusRow, { top: regions.fanTop - 30 }]}>
-            <Text style={[styles.status, myTurn && styles.statusMine]}>{status}</Text>
-            {passed.includes(0) && <Text style={styles.myPass}>{t('call.pass')}</Text>}
-          </View>
+          {DEV_MENU && settings.devTableNumbers && <TableNumbers line={match.hand.line} origin={match.hand.origin} regions={regions} />}
+          {hands.map((h, seat) =>
+            seat === viewer ? null : (
+              <PlayerBadge
+                key={seat}
+                slot={slotOf(seat, viewer, players)}
+                name={playerName(seat, match.mode)}
+                team={teamOf(seat, players)}
+                x={regions.slots[slotOf(seat, viewer, players)].x}
+                y={regions.slots[slotOf(seat, viewer, players)].y}
+                tiles={h.length}
+                active={!match.hand.result && match.hand.turn === seat}
+                bubble={bubbles[seat] ?? null}
+              />
+            ),
+          )}
+          {players === 2 && match.hand.boneyard.length > 0 && (
+            <Text pointerEvents="none" style={[styles.boneyard, { left: regions.boneyard.x - 40, top: regions.boneyard.y + 14 }]}>
+              {t('game.boneyard', { n: match.hand.boneyard.length })}
+            </Text>
+          )}
+          {settings.tileCounter && (
+            <View pointerEvents="none" style={[styles.counter, { top: regions.table.y + 4, left: regions.table.x + 8, right: regions.width - regions.table.x - regions.table.w + 8 }]}>
+              {counts.map((n, pip) => (
+                <Text key={pip} style={[styles.counterChip, n === 7 && styles.counterDone]}>
+                  {pip}: {n}/7
+                </Text>
+              ))}
+            </View>
+          )}
+          {!reviewing && (
+            <View style={[styles.statusRow, { top: regions.fanTop - 34 }]} pointerEvents="box-none">
+              <Text style={[styles.status, myTurn && styles.statusMine]}>{status}</Text>
+              {bubbles[viewer] && <Text style={styles.myPass}>{bubbles[viewer]}</Text>}
+              {myTurn && !drawable && (playable?.size ?? 0) > 0 && (
+                <Pressable accessibilityRole="button" accessibilityLabel={t('game.hint')} onPress={askHint} style={({ pressed }) => [styles.hint, pressed && styles.pressed]}>
+                  <Lightbulb size={16} color={COLORS.accentText} strokeWidth={2.4} />
+                  <Text style={styles.hintText}>{t('game.hint')}</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+          {drawable && (
+            <View style={[styles.drawRow, { top: regions.fanTop - 84 }]}>
+              <ActionButton compact label={t('game.draw', { n: match.hand.boneyard.length })} onPress={() => doMove(null)} />
+            </View>
+          )}
+          {reviewing && (
+            <View style={[styles.reviewBar, { top: regions.fanTop - 60 }]}>
+              <Text style={styles.reviewTitle}>{t('hand.reviewTitle')}</Text>
+              <ActionButton
+                compact
+                label={t('hand.reviewBack')}
+                onPress={() => {
+                  setReviewing(false);
+                  setShowSummary(true);
+                }}
+              />
+            </View>
+          )}
         </>
       )}
 
@@ -266,12 +401,12 @@ export default function GameScreen() {
           <X size={20} color={COLORS.text} strokeWidth={2.4} />
         </Pressable>
         <View style={styles.scores}>
-          <Text style={[styles.scoreText, { color: COLORS.us }]}>
-            {t('team.us')} {match.scores[0]}
+          <Text style={[styles.scoreText, { color: COLORS.us }]} numberOfLines={1}>
+            {teamName(0, match.mode)} {match.scores[0]}
           </Text>
           <Text style={styles.scoreSep}>·</Text>
-          <Text style={[styles.scoreText, { color: COLORS.them }]}>
-            {t('team.them')} {match.scores[1]}
+          <Text style={[styles.scoreText, { color: COLORS.them }]} numberOfLines={1}>
+            {teamName(1, match.mode)} {match.scores[1]}
           </Text>
         </View>
         <View style={styles.handInfo}>
@@ -281,7 +416,7 @@ export default function GameScreen() {
       </View>
 
       {pending !== null && ends && (
-        <View style={[styles.chooser, { top: (regions?.fanTop ?? 500) - 170 }]}>
+        <View style={[styles.chooser, { top: (regions?.fanTop ?? 500) - 30 }]}>
           <Text style={styles.chooserTitle}>{t('game.chooseEnd')}</Text>
           <View style={styles.chooserRow}>
             <Pressable style={({ pressed }) => [styles.endButton, pressed && styles.pressed]} onPress={() => chooseEnd('left')}>
@@ -291,6 +426,7 @@ export default function GameScreen() {
               <Text style={styles.endText}>{t('game.endRight', { n: ends[1] })}</Text>
             </Pressable>
           </View>
+          <Text style={styles.chooserNote}>{t('game.tapGhost')}</Text>
           <Pressable onPress={() => setPending(null)} style={({ pressed }) => [styles.cancel, pressed && styles.pressed]}>
             <Text style={styles.cancelText}>{t('game.cancel')}</Text>
           </Pressable>
@@ -305,7 +441,30 @@ export default function GameScreen() {
         </View>
       )}
 
-      {showSummary && <HandSummary match={match} onNext={nextHand} />}
+      {covered && !match.hand.result && (
+        <View style={styles.cover}>
+          <Text style={styles.coverTitle}>{t('game.coverTitle', { name: playerName(match.hand.turn, match.mode) })}</Text>
+          <Text style={styles.coverText}>{t('game.coverText')}</Text>
+          <ActionButton
+            label={t('game.coverButton')}
+            onPress={() => {
+              setViewer(live.current.match.hand.turn);
+              setCovered(false);
+            }}
+          />
+        </View>
+      )}
+
+      {showSummary && (
+        <HandSummary
+          match={match}
+          onNext={nextHand}
+          onReview={() => {
+            setShowSummary(false);
+            setReviewing(true);
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -429,6 +588,97 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     color: COLORS.accentText,
+  },
+  chooserNote: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+  },
+  hint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: COLORS.accent,
+  },
+  hintText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: COLORS.accentText,
+  },
+  drawRow: {
+    position: 'absolute',
+    left: 60,
+    right: 60,
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  boneyard: {
+    position: 'absolute',
+    width: 80,
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+  },
+  counter: {
+    position: 'absolute',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  counterChip: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.text,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    overflow: 'hidden',
+    fontVariant: ['tabular-nums'],
+  },
+  counterDone: {
+    color: COLORS.textMuted,
+    textDecorationLine: 'line-through',
+  },
+  reviewBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+    gap: 6,
+  },
+  reviewTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.accent,
+  },
+  cover: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    padding: 24,
+  },
+  coverTitle: {
+    fontFamily: FONTS.title,
+    fontSize: 36,
+    color: COLORS.accent,
+    textAlign: 'center',
+  },
+  coverText: {
+    fontSize: 16,
+    color: COLORS.text,
+    textAlign: 'center',
   },
   cancel: {
     paddingVertical: 6,

@@ -14,6 +14,8 @@ interface Paints {
   glow: SkPaint;
   glowStroke: SkPaint;
   dim: SkPaint;
+  ghostFill: SkPaint;
+  ghostStroke: SkPaint;
   back: SkPaint;
   backEdge: SkPaint;
   backMark: SkPaint;
@@ -33,6 +35,8 @@ function getPaints(): Paints {
     glow: blurred(COLORS.playable, 6, 0.85),
     glowStroke: stroke(COLORS.playable, 2.5),
     dim: solid('#000000', 0.32),
+    ghostFill: solid(COLORS.playable, 0.28),
+    ghostStroke: stroke(COLORS.playable, 3),
     back: solid(COLORS.tileBack),
     backEdge: stroke(COLORS.tileBackLight, 1.2),
     backMark: stroke(COLORS.accent, 1, 0.7),
@@ -91,6 +95,8 @@ export interface TileStyle {
   highlight?: boolean;
   dim?: boolean;
   shadow?: boolean;
+  /** Sitio donde caerá la ficha: se ve la ficha con un velo dorado y un borde que brilla. */
+  ghost?: boolean;
 }
 
 /**
@@ -112,7 +118,7 @@ export function drawTile(
   const x = cx - w / 2;
   const y = cy - h / 2;
   const radius = size * 0.16;
-  if (style.highlight) canvas.drawRRect(rrect(x - 2, y - 2, w + 4, h + 4, radius + 2), p.glow);
+  if (style.highlight || style.ghost) canvas.drawRRect(rrect(x - 2, y - 2, w + 4, h + 4, radius + 2), p.glow);
   if (style.shadow !== false) canvas.drawRRect(rrect(x + size * 0.06, y + size * 0.1, w, h, radius), p.shadow);
   canvas.drawRRect(rrect(x, y, w, h, radius), p.ivory);
   canvas.drawRRect(rrect(x + 0.6, y + 0.6, w - 1.2, h - 1.2, radius), p.edge);
@@ -128,6 +134,10 @@ export function drawTile(
   }
   if (style.highlight) canvas.drawRRect(rrect(x - 1, y - 1, w + 2, h + 2, radius + 1), p.glowStroke);
   if (style.dim) canvas.drawRRect(rrect(x, y, w, h, radius), p.dim);
+  if (style.ghost) {
+    canvas.drawRRect(rrect(x, y, w, h, radius), p.ghostFill);
+    canvas.drawRRect(rrect(x - 1.5, y - 1.5, w + 3, h + 3, radius + 1.5), p.ghostStroke);
+  }
 }
 
 /** Ficha boca abajo (manos de los demás). */
