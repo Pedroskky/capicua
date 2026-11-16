@@ -1,0 +1,4 @@
+{
+  "android": { "app_name": "Capicua Dominoes" },
+  "ios": { "CFBundleDisplayName": "Capicua Dominoes" }
+}
