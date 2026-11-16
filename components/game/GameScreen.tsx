@@ -28,6 +28,14 @@ import {
   type Move,
 } from '@/game/engine';
 import { scenarioMove } from '@/game/devScenarios';
+import { handEvent, matchEvent } from '@/game/events';
+import { rival } from '@/game/tournament';
+import type { ActivityReport } from '@/game/activity';
+import { PHRASE_PLAY_CHANCE, PHRASES_PER_MOMENT, type PhraseMoment } from '@/game/config';
+import { setTileSkin } from '@/components/art/tiles';
+import { recordActivity } from '@/lib/activity';
+import { progressStore } from '@/lib/progress';
+import { setLastMatchReport } from '@/lib/lastReport';
 import type { TileId } from '@/game/tiles';
 import { toSavedMatch } from '@/game/savedMatch';
 import { GameCanvas, type OtherHand } from '@/components/game/GameCanvas';
@@ -40,7 +48,7 @@ import { FONTS, shadowText } from '@/components/ui/theme';
 import { useSettings } from '@/hooks/useSettings';
 import { createMusic, createSoundBank, vibrate, type MusicPlayer, type SoundBank, type SoundName } from '@/lib/feedback';
 import { matchStore } from '@/lib/matchStore';
-import { playerName, t, teamName } from '@/lib/i18n';
+import { playerName, t, teamName, type TranslationKey } from '@/lib/i18n';
 import { DEV_MENU } from '@/lib/devMenu';
 import { takeForcedScenario } from '@/lib/devForced';
 
@@ -60,6 +68,15 @@ export default function GameScreen() {
   const { settings } = useSettings();
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [match, setMatch] = useState<MatchState>(initialMatch);
+  // Diseños equipados en la tienda (la ruta ya cargó el progreso antes de montar esta pantalla).
+  const [equipped] = useState(() => {
+    const e = progressStore.current()?.equipped ?? { tiles: 'ivory' as const, table: 'felt' as const, phrases: 'basic' as const };
+    setTileSkin(e.tiles);
+    return e;
+  });
+  const rivalId = match.tournament !== null ? rival(match.tournament).id : null;
+  const nameOf = useCallback((seat: number) => playerName(seat, match.mode, rivalId), [match.mode, rivalId]);
+  const [handReport, setHandReport] = useState<ActivityReport | null>(null);
   const players = match.hand.hands.length;
   const hotseat = match.mode === 'hotseat';
   /** Quién mira la pantalla (su mano va abajo). En dos en el teléfono cambia con cada turno. */
@@ -126,7 +143,7 @@ export default function GameScreen() {
     if (live.current.match.hand.line.length === 0) play('shuffle');
   }, [handNumber, play]);
 
-  const showBubble = useCallback((seat: number, text: string) => {
+  const showBubble = useCallback((seat: number, text: string, ms: number = TIMING.passBubbleMs) => {
     setBubbles((b) => ({ ...b, [seat]: text }));
     setTimeout(
       () =>
@@ -135,8 +152,37 @@ export default function GameScreen() {
           delete next[seat];
           return next;
         }),
-      TIMING.passBubbleMs,
+      ms,
     );
+  }, []);
+
+  /** Frase de Carmen (tu compañera, asiento 2) con el paquete equipado. */
+  const carmenSays = useCallback(
+    (moment: PhraseMoment) => {
+      const current = live.current.match;
+      if (current.mode !== 'partners') return false;
+      if (moment === 'play' && Math.random() > PHRASE_PLAY_CHANCE) return false;
+      const n = Math.floor(Math.random() * PHRASES_PER_MOMENT[moment]);
+      showBubble(2, t(`phrase.${equipped.phrases}.${moment}${n}` as TranslationKey), 1800);
+      return true;
+    },
+    [equipped.phrases, showBubble],
+  );
+
+  /** Apunta la mano (y la partida, si terminó) una sola vez: monedas, retos, racha, ELO, estadísticas y logros. */
+  const recordEnd = useCallback((next: MatchState): MatchState => {
+    if (!next.hand.result || next.recordedHands >= next.hand.number) return next;
+    const marked: MatchState = { ...next, recordedHands: next.hand.number, recordedMatch: next.winnerTeam !== null || next.recordedMatch };
+    const hEvent = handEvent(next);
+    const mEvent = next.winnerTeam !== null && !next.recordedMatch ? matchEvent(next) : null;
+    setHandReport(null);
+    setLastMatchReport(null);
+    (async () => {
+      const h = hEvent ? await recordActivity(hEvent) : null;
+      setHandReport(h);
+      if (mEvent) setLastMatchReport(await recordActivity(mEvent));
+    })().catch(() => undefined);
+    return marked;
   }, []);
 
   /** Juega, roba o pasa el jugador del turno. `move` null = robar si se puede, si no pasar. */
@@ -147,22 +193,27 @@ export default function GameScreen() {
       setPending(null);
       setHint(null);
       try {
-        if (move) setMatch(playMove(current, move));
-        else if (canDraw(current)) {
+        if (move) {
+          const next = playMove(current, move);
+          setMatch(recordEnd(next));
+          const r = next.hand.result;
+          if (r && r.winnerTeam === 0 && current.mode === 'partners') carmenSays(r.capicua ? 'capicua' : r.kind === 'tranque' ? 'tranque' : 'domino');
+          else if (!r && seat === 2) carmenSays('play');
+        } else if (canDraw(current)) {
           setMatch(drawTile(current));
           play('clac');
           if (!isHumanSeat(current, seat)) showBubble(seat, t('call.draw'));
         } else {
           setMatch(passTurn(current));
           play('pass');
-          showBubble(seat, t('call.pass'));
+          if (!(seat === 2 && carmenSays('pass'))) showBubble(seat, t('call.pass'));
         }
       } catch (error) {
         // Nunca debería pasar (el motor ya validó); en desarrollo se avisa.
         if (DEV_MENU) console.warn('Jugada rechazada', error);
       }
     },
-    [play, showBubble],
+    [play, showBubble, carmenSays, recordEnd],
   );
 
   // Dos en el teléfono: cuando le toca a la otra persona, se tapa la mano hasta que coja el teléfono.
@@ -265,6 +316,7 @@ export default function GameScreen() {
       return;
     }
     const next = startNextHand(match);
+    setHandReport(null);
     setShowSummary(false);
     setReviewing(false);
     if (hotseat) {
@@ -301,12 +353,12 @@ export default function GameScreen() {
   const counts = playedByNumber(match.hand.line);
 
   let status: string;
-  const starterName = playerName(match.hand.starter, match.mode);
+  const starterName = nameOf(match.hand.starter);
   if (match.hand.line.length === 0) {
     status = match.hand.opening !== null && match.hand.number === 1 ? t('game.opening', { name: starterName }) : t('game.openingAny', { name: starterName });
     if (myTurn) status = `${status} · ${t('game.yourTurn')}`;
   } else if (match.hand.result) status = '';
-  else status = myTurn ? t('game.yourTurn') : t('game.waiting', { name: playerName(match.hand.turn, match.mode) });
+  else status = myTurn ? t('game.yourTurn') : t('game.waiting', { name: nameOf(match.hand.turn) });
 
   return (
     <View style={styles.root} onLayout={onLayout}>
@@ -314,6 +366,7 @@ export default function GameScreen() {
         <>
           <GameCanvas
             regions={regions}
+            tableSkin={equipped.table}
             line={match.hand.line}
             origin={match.hand.origin}
             viewer={viewer}
@@ -334,7 +387,7 @@ export default function GameScreen() {
               <PlayerBadge
                 key={seat}
                 slot={slotOf(seat, viewer, players)}
-                name={playerName(seat, match.mode)}
+                name={nameOf(seat)}
                 team={teamOf(seat, players)}
                 x={regions.slots[slotOf(seat, viewer, players)].x}
                 y={regions.slots[slotOf(seat, viewer, players)].y}
@@ -443,7 +496,7 @@ export default function GameScreen() {
 
       {covered && !match.hand.result && (
         <View style={styles.cover}>
-          <Text style={styles.coverTitle}>{t('game.coverTitle', { name: playerName(match.hand.turn, match.mode) })}</Text>
+          <Text style={styles.coverTitle}>{t('game.coverTitle', { name: nameOf(match.hand.turn) })}</Text>
           <Text style={styles.coverText}>{t('game.coverText')}</Text>
           <ActionButton
             label={t('game.coverButton')}
@@ -458,6 +511,7 @@ export default function GameScreen() {
       {showSummary && (
         <HandSummary
           match={match}
+          report={handReport}
           onNext={nextHand}
           onReview={() => {
             setShowSummary(false);

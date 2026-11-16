@@ -81,11 +81,18 @@ export interface MatchState {
   history: HandResult[];
   winnerTeam: Team | null;
   zapatero: boolean;
+  /** Pareja del Torneo del barrio (0–11) o null. */
+  tournament: number | null;
+  /** Manos ya apuntadas en monedas, retos y estadísticas (para no contarlas dos veces al volver a abrir). */
+  recordedHands: number;
+  /** La partida terminada ya se apuntó. */
+  recordedMatch: boolean;
 }
 
 export interface MatchOptions {
   mode?: GameMode;
   aiLevel?: AiLevel;
+  tournament?: number | null;
 }
 
 export function playersFor(mode: GameMode): number {
@@ -192,6 +199,9 @@ export function createMatch(seed: number, rules: DominoRules = DEFAULT_RULES, op
     history: [],
     winnerTeam: null,
     zapatero: false,
+    tournament: options.tournament ?? null,
+    recordedHands: 0,
+    recordedMatch: false,
   };
 }
 

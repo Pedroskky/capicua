@@ -11,14 +11,20 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { FONTS, shadowText } from '@/components/ui/theme';
 import { matchStore } from '@/lib/matchStore';
 import { settingsStore } from '@/lib/settings';
-import { playerName, t, teamName } from '@/lib/i18n';
+import { playerName, rivalName, t, teamName } from '@/lib/i18n';
+import { RIVALS, isUnlocked, rival } from '@/game/tournament';
+import { TOURNAMENT } from '@/game/config';
+import { RewardLines } from '@/components/game/HandSummary';
+import { getLastMatchReport } from '@/lib/lastReport';
+import { progressStore } from '@/lib/progress';
+import { Star } from 'lucide-react-native';
 
 function newSeed(): number {
   return (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
 }
 
-function describeHand(r: HandResult, mode: 'partners' | 'single' | 'hotseat'): string {
-  if (r.kind === 'domino') return `${t('result.handDomino')} · ${playerName(r.winnerPlayer ?? 0, mode)}`;
+function describeHand(r: HandResult, mode: 'partners' | 'single' | 'hotseat', rivalId: string | null): string {
+  if (r.kind === 'domino') return `${t('result.handDomino')} · ${playerName(r.winnerPlayer ?? 0, mode, rivalId)}`;
   return r.winnerTeam === null ? `${t('result.handTranque')} · ${t('result.handTie')}` : t('result.handTranque');
 }
 
@@ -60,6 +66,18 @@ export default function ResultScreen() {
 
   const won = match.winnerTeam === 0;
   const mode = match.mode;
+  const rivalId = match.tournament !== null ? rival(match.tournament).id : null;
+  const report = getLastMatchReport();
+  const progress = progressStore.current();
+  const nextPair = match.tournament !== null && match.tournament + 1 < RIVALS.length && progress && isUnlocked(progress, match.tournament + 1) ? match.tournament + 1 : null;
+  const playTournament = (index: number) => {
+    const current = settingsStore.current();
+    const rules = { ...(current?.rules ?? match.rules), targetScore: TOURNAMENT.targetScore };
+    matchStore
+      .save(toSavedMatch(createMatch(newSeed(), rules, { mode: 'partners', aiLevel: RIVALS[index].level, tournament: index })))
+      .catch(() => undefined)
+      .finally(() => router.replace('/game'));
+  };
   const title =
     mode === 'partners'
       ? won
@@ -70,7 +88,7 @@ export default function ResultScreen() {
           ? t('result.youWin')
           : t('result.youLose', { name: playerName(1, mode) })
         : t('result.winPlayer', { name: playerName(match.winnerTeam ?? 0, mode) });
-  const zapateroLine = mode === 'partners' ? `${t('call.zapatero')} ${won ? t('result.zapatero') : t('result.zapateroThem')}` : t('result.zapateroWin');
+  const zapateroLine = mode === 'partners' ? (won ? t('result.zapatero') : t('result.zapateroThem')) : t('result.zapateroWin');
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -78,14 +96,29 @@ export default function ResultScreen() {
         {match.zapatero && (
           <Text style={styles.zapatero}>{zapateroLine}</Text>
         )}
+        {rivalId && <Text style={styles.vs}>{t('tour.vs', { name: rivalName(rivalId) })}</Text>}
+        {report?.tournament && report.tournament.stars > 0 && (
+          <View style={styles.starsRow}>
+            {[1, 2, 3].map((k) => (
+              <Star key={k} size={30} color={COLORS.accent} fill={report.tournament && report.tournament.stars >= k ? COLORS.accent : 'transparent'} />
+            ))}
+          </View>
+        )}
+        {report && (
+          <View style={styles.rewardCard}>
+            {report.coins > 0 && <Text style={styles.rewardTotal}>{t('reward.total', { n: report.coins })}</Text>}
+            <RewardLines report={report} />
+            <Text style={styles.eloLine}>{t('reward.elo', { before: report.eloBefore, after: report.eloAfter })}</Text>
+          </View>
+        )}
         <Text style={styles.section}>{t('result.final')}</Text>
         <View style={styles.scoreRow}>
           <View style={[styles.scoreBox, won && styles.winnerBox]}>
-            <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{teamName(0, mode)}</Text>
+            <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{teamName(0, mode, rivalId)}</Text>
             <Text style={styles.score}>{match.scores[0]}</Text>
           </View>
           <View style={[styles.scoreBox, !won && styles.winnerBox]}>
-            <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{teamName(1, mode)}</Text>
+            <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{teamName(1, mode, rivalId)}</Text>
             <Text style={styles.score}>{match.scores[1]}</Text>
           </View>
         </View>
@@ -96,7 +129,7 @@ export default function ResultScreen() {
             <View key={i} style={styles.row}>
               <Text style={styles.handNo}>{t('result.handRow', { n: i + 1 })}</Text>
               <Text style={styles.handKind} numberOfLines={2}>
-                {describeHand(r, match.mode)}
+                {describeHand(r, match.mode, rivalId)}
                 {r.capicua ? ` · ${t('call.capicua')}` : ''}
               </Text>
               <Text style={[styles.points, { color: r.winnerTeam === 0 ? COLORS.us : r.winnerTeam === 1 ? COLORS.them : COLORS.textMuted }]}>
@@ -110,7 +143,15 @@ export default function ResultScreen() {
         </View>
 
         <View style={styles.buttons}>
-          <ActionButton label={t('result.playAgain')} icon={RotateCcw} onPress={playAgain} />
+          {match.tournament !== null ? (
+            <>
+              {won && nextPair !== null && <ActionButton label={t('tour.next')} onPress={() => playTournament(nextPair)} />}
+              <ActionButton label={t('tour.replay')} icon={RotateCcw} variant={won && nextPair !== null ? 'secondary' : 'primary'} onPress={() => playTournament(match.tournament ?? 0)} />
+              <ActionButton label={t('tour.back')} variant="secondary" onPress={() => router.replace('/tournament')} />
+            </>
+          ) : (
+            <ActionButton label={t('result.playAgain')} icon={RotateCcw} onPress={playAgain} />
+          )}
           <ActionButton label={t('result.home')} icon={Home} variant="secondary" onPress={() => router.replace('/')} />
         </View>
       </ScrollView>
@@ -142,6 +183,36 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontFamily: FONTS.title,
     fontSize: 40,
+    textAlign: 'center',
+  },
+  vs: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  rewardCard: {
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    gap: 6,
+  },
+  rewardTotal: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textAlign: 'center',
+  },
+  eloLine: {
+    fontSize: 13,
+    color: COLORS.textMuted,
     textAlign: 'center',
   },
   zapatero: {

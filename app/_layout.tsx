@@ -55,7 +55,7 @@ function AppShell() {
       key={settings.language}
       screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.background }, animation: 'fade' }}
     >
-      <Stack.Screen name="index" />
+      <Stack.Screen name="(tabs)" />
       <Stack.Screen name="game" options={{ gestureEnabled: false }} />
       <Stack.Screen name="result" options={{ gestureEnabled: false }} />
       <Stack.Screen name="settings" />
