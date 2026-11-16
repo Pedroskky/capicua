@@ -1,0 +1,218 @@
+// Resumen de una mano: cómo terminó, fichas que quedaron (por jugador y pareja), puntos, capicúa, total y marcador.
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { COLORS } from '@/game/config';
+import type { HandResult, MatchState } from '@/game/engine';
+import { tileOf } from '@/game/tiles';
+import { ActionButton } from '@/components/ui/ActionButton';
+import { FONTS } from '@/components/ui/theme';
+import { playerName, t } from '@/lib/i18n';
+
+interface HandSummaryProps {
+  match: MatchState;
+  onNext: () => void;
+}
+
+export function headline(result: HandResult): string {
+  if (result.kind === 'domino') return t('hand.domino', { name: playerName(result.winnerPlayer ?? 0) });
+  return result.winnerTeam === null ? t('hand.tranqueTie') : t('hand.tranque');
+}
+
+export function HandSummary({ match, onNext }: HandSummaryProps) {
+  const result = match.hand.result;
+  if (!result) return null;
+  const finished = match.winnerTeam !== null;
+  const teamColor = result.winnerTeam === 0 ? COLORS.us : COLORS.them;
+  return (
+    <View style={styles.backdrop}>
+      <View style={styles.card}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.title}>{t('hand.title', { n: match.hand.number })}</Text>
+          <Text style={styles.headline}>{headline(result)}</Text>
+          {result.winnerTeam !== null && (
+            <Text style={[styles.winner, { color: teamColor }]}>{result.winnerTeam === 0 ? t('hand.winsUs') : t('hand.winsThem')}</Text>
+          )}
+
+          <Text style={styles.section}>{t('hand.pipsTitle')}</Text>
+          {[0, 1, 2, 3].map((seat) => (
+            <View key={seat} style={styles.row}>
+              <Text style={[styles.player, { color: seat % 2 === 0 ? COLORS.us : COLORS.them }]}>{playerName(seat)}</Text>
+              <Text style={styles.tiles} numberOfLines={2}>
+                {match.hand.hands[seat].length === 0
+                  ? t('hand.noTiles')
+                  : match.hand.hands[seat].map((id) => `${tileOf(id).a}|${tileOf(id).b}`).join('  ')}
+              </Text>
+              <Text style={styles.value}>{result.handPips[seat]}</Text>
+            </View>
+          ))}
+          <View style={styles.row}>
+            <Text style={styles.team}>{t('hand.pipsTeam', { team: t('team.us'), n: result.teamPips[0] })}</Text>
+            <Text style={styles.team}>{t('hand.pipsTeam', { team: t('team.them'), n: result.teamPips[1] })}</Text>
+          </View>
+
+          <View style={styles.divider} />
+          <View style={styles.row}>
+            <Text style={styles.label}>{t('hand.points')}</Text>
+            <Text style={styles.value}>{result.points}</Text>
+          </View>
+          {result.capicua && (
+            <View style={styles.row}>
+              <Text style={[styles.label, styles.bonus]}>{t('hand.capicuaBonus')}</Text>
+              <Text style={[styles.value, styles.bonus]}>+{result.bonus}</Text>
+            </View>
+          )}
+          <View style={styles.row}>
+            <Text style={styles.totalLabel}>{t('hand.total')}</Text>
+            <Text style={styles.totalValue}>{result.total}</Text>
+          </View>
+
+          <View style={styles.divider} />
+          <Text style={styles.section}>{t('hand.score')}</Text>
+          <View style={styles.scoreRow}>
+            <View style={styles.scoreBox}>
+              <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{t('team.us')}</Text>
+              <Text style={styles.score}>{match.scores[0]}</Text>
+            </View>
+            <View style={styles.scoreBox}>
+              <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{t('team.them')}</Text>
+              <Text style={styles.score}>{match.scores[1]}</Text>
+            </View>
+          </View>
+          <Text style={styles.target}>{t('game.target', { n: match.rules.targetScore })}</Text>
+
+          <View style={styles.button}>
+            <ActionButton label={finished ? t('hand.seeResult') : t('hand.next')} onPress={onNext} />
+          </View>
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: {
+    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '92%',
+    borderRadius: 18,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceBorder,
+  },
+  content: {
+    padding: 18,
+    gap: 8,
+  },
+  title: {
+    fontFamily: FONTS.heading,
+    fontSize: 26,
+    color: COLORS.accent,
+    textAlign: 'center',
+  },
+  headline: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  winner: {
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  section: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  player: {
+    width: 104,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  tiles: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.text,
+    fontVariant: ['tabular-nums'],
+  },
+  team: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+  },
+  label: {
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  value: {
+    minWidth: 36,
+    textAlign: 'right',
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.text,
+    fontVariant: ['tabular-nums'],
+  },
+  bonus: {
+    color: COLORS.accent,
+  },
+  totalLabel: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: COLORS.text,
+  },
+  totalValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: COLORS.accent,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.surfaceBorder,
+    marginVertical: 4,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  scoreBox: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: COLORS.background,
+  },
+  scoreTeam: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  score: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: COLORS.text,
+    fontVariant: ['tabular-nums'],
+  },
+  target: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  button: {
+    marginTop: 10,
+    alignItems: 'center',
+  },
+});
