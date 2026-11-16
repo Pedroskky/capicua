@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_RULES, type DominoRules } from './config';
 import {
+  playedByNumber,
+  canDraw,
+  drawTile,
+  isBlocked,
   canPlay,
   createMatch,
   endsForTile,
@@ -15,7 +19,7 @@ import {
   type HandState,
   type MatchState,
 } from './engine';
-import { DOUBLE_SIX, TILE_COUNT, handPips, tileId } from './tiles';
+import { DOUBLE_SIX, TILE_COUNT, handPips, tileId, tileOf } from './tiles';
 import { aiView, chooseMove } from './ai';
 
 /** Juega la mano entera con la IA en los cuatro asientos. */
@@ -33,7 +37,7 @@ function playHandWithAi(match: MatchState): MatchState {
 /** Partida preparada a mano (manos concretas). */
 function withHands(hands: number[][], opts: Partial<HandState> = {}, rules: DominoRules = DEFAULT_RULES): MatchState {
   const base = createMatch(1, rules);
-  return { ...base, hand: { ...base.hand, number: 2, starter: 0, turn: 0, hands, line: [], origin: 0, log: [], result: null, ...opts } };
+  return { ...base, hand: { ...base.hand, number: 2, starter: 0, opening: null, boneyard: [], turn: 0, hands, line: [], origin: 0, log: [], result: null, ...opts } };
 }
 
 const T = tileId;
@@ -62,8 +66,8 @@ describe('reparto', () => {
   });
 
   it('turno a la derecha y parejas enfrentadas', () => {
-    expect([0, 1, 2, 3].map(nextPlayer)).toEqual([1, 2, 3, 0]);
-    expect([0, 1, 2, 3].map(teamOf)).toEqual([0, 1, 0, 1]);
+    expect([0, 1, 2, 3].map((p) => nextPlayer(p))).toEqual([1, 2, 3, 0]);
+    expect([0, 1, 2, 3].map((p) => teamOf(p))).toEqual([0, 1, 0, 1]);
   });
 });
 
@@ -253,5 +257,107 @@ describe('partida', () => {
     const end = playMove({ ...m, scores: [20, 10] }, { tile: T(3, 6), end: 'left' });
     expect(end.hand.result).toMatchObject({ capicua: false, total: 30 });
     expect(end.winnerTeam).toBe(0);
+  });
+});
+
+describe('mano a mano (2 jugadores con pozo)', () => {
+  it('7 fichas cada uno y 14 en el pozo; sale el doble más alto que haya en las manos', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const m = createMatch(seed, DEFAULT_RULES, { mode: 'single' });
+      expect(m.hand.hands.map((h) => h.length)).toEqual([7, 7]);
+      expect(m.hand.boneyard).toHaveLength(14);
+      if (m.hand.opening !== null) {
+        expect(m.hand.hands[m.hand.starter]).toContain(m.hand.opening);
+        const doubles = m.hand.hands.flat().filter((id) => tileOf(id).a === tileOf(id).b);
+        expect(Math.max(...doubles.map((id) => tileOf(id).a))).toBe(tileOf(m.hand.opening).a);
+      }
+    }
+  });
+
+  it('quien no puede jugar roba hasta poder; con el pozo vacío pasa', () => {
+    const base = createMatch(1, DEFAULT_RULES, { mode: 'single' });
+    let m: MatchState = {
+      ...base,
+      hand: {
+        ...base.hand,
+        number: 2,
+        opening: null,
+        starter: 0,
+        turn: 1,
+        hands: [[T(1, 1), T(0, 0)], [T(2, 2)]],
+        boneyard: [T(4, 4), T(3, 5), T(6, 6)],
+        line: [{ tile: T(3, 5), left: 3, right: 5, player: 0 }].map((p) => ({ ...p, tile: T(3, 3), left: 3, right: 3 })),
+        origin: 0,
+        log: [],
+        result: null,
+      },
+    };
+    expect(canPlay(m, 1)).toBe(false);
+    expect(canDraw(m)).toBe(true);
+    expect(() => passTurn(m)).toThrow(IllegalMoveError);
+    m = drawTile(m);
+    expect(m.hand.hands[1]).toContain(T(4, 4));
+    expect(m.hand.turn).toBe(1);
+    m = drawTile(m);
+    expect(canPlay(m, 1)).toBe(true);
+    expect(canDraw(m)).toBe(false);
+    expect(m.hand.log.filter((e) => e.type === 'draw')).toHaveLength(2);
+  });
+
+  it('se juega entera sin errores y cada mano termina bien', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      let m = createMatch(seed * 31, DEFAULT_RULES, { mode: 'single' });
+      while (m.winnerTeam === null) {
+        while (!m.hand.result) {
+          const mv = chooseMove(aiView(m, m.hand.turn));
+          m = mv ? playMove(m, mv) : canDraw(m) ? drawTile(m) : passTurn(m);
+        }
+        const r = m.hand.result;
+        if (r.kind === 'domino') expect(m.hand.hands[r.winnerPlayer!]).toHaveLength(0);
+        else expect(isBlocked(m.hand)).toBe(true);
+        if (m.winnerTeam === null) m = startNextHand(m);
+      }
+      expect(m.scores[m.winnerTeam]).toBeGreaterThanOrEqual(100);
+    }
+  });
+});
+
+describe('reglas de la casa', () => {
+  const line = [{ tile: T(3, 3), left: 3, right: 3, player: 1 }];
+  it('capicúa con puntas iguales: no cuenta por defecto, sí si la regla lo permite', () => {
+    const hands = [[T(3, 6)], [T(1, 1)], [T(2, 2)], [T(0, 0)]];
+    expect(playMove(withHands(hands, { line }), { tile: T(3, 6), end: 'left' }).hand.result!.capicua).toBe(false);
+    const rules = { ...DEFAULT_RULES, capicuaNeedsDifferentEnds: false };
+    const r = playMove(withHands(hands, { line }, rules), { tile: T(3, 6), end: 'left' }).hand.result!;
+    expect(r).toMatchObject({ capicua: true, bonus: 25 });
+  });
+
+  it('valor de la capicúa 50 y al dominar contar solo las fichas de la pareja rival', () => {
+    const rules = { ...DEFAULT_RULES, capicuaBonus: 50, dominoCounts: 'opponents' as const };
+    const capLine = [
+      { tile: T(3, 4), left: 3, right: 4, player: 1 },
+      { tile: T(4, 6), left: 4, right: 6, player: 2 },
+    ];
+    const r = playMove(withHands([[T(3, 6)], [T(1, 1)], [T(2, 2)], [T(0, 5)]], { line: capLine }, rules), { tile: T(3, 6), end: 'left' }).hand.result!;
+    expect(r).toMatchObject({ capicua: true, bonus: 50, points: 2 + 5, total: 57 });
+  });
+
+  it('quién sale: el que ganó la mano', () => {
+    const rules = { ...DEFAULT_RULES, nextStarter: 'handWinner' as const };
+    let m = playHandWithAi(createMatch(9, rules));
+    const winner = m.hand.result!.winnerPlayer;
+    m = startNextHand(m);
+    expect(m.hand.starter).toBe(winner ?? nextPlayer(0));
+  });
+});
+
+describe('contador de fichas', () => {
+  it('cuenta las fichas de cada número que hay en la mesa', () => {
+    const line = [
+      { tile: T(2, 3), left: 2, right: 3, player: 0 },
+      { tile: T(3, 3), left: 3, right: 3, player: 1 },
+      { tile: T(3, 6), left: 3, right: 6, player: 2 },
+    ];
+    expect(playedByNumber(line)).toEqual([0, 0, 1, 3, 0, 0, 1]);
   });
 });

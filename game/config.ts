@@ -9,9 +9,9 @@ export interface DominoRules {
   targetScore: number;
   /** Bono por ganar con capicúa (la última ficha cabe por las dos puntas). 0 = sin capicúa. */
   capicuaBonus: number;
-  /** Para que haya capicúa, las dos puntas tienen que ser números distintos. */
+  /** Para que haya capicúa, las dos puntas tienen que ser números distintos (si no, con puntas iguales también cuenta). */
   capicuaNeedsDifferentEnds: boolean;
-  /** En la primera mano sale quien tiene el doble seis, y sale con él. */
+  /** En la primera mano sale quien tiene el doble seis (en mano a mano, el doble más alto), y sale con él. */
   firstHandOpensWithDoubleSix: boolean;
   /** Quién sale en las manos siguientes: el que sigue al que salió antes, o el que ganó la mano. */
   nextStarter: 'nextPlayer' | 'handWinner';
@@ -43,11 +43,22 @@ export const DEFAULT_RULES: DominoRules = {
 
 /** Número mayor de las fichas (doble seis). */
 export const MAX_PIP = 6;
+/** Jugadores en parejas (en mano a mano son 2). */
 export const PLAYERS = 4;
 
 /** Velocidad de la IA (milisegundos que «piensa» cada jugador de la máquina). */
 export type AiSpeed = 'slow' | 'normal' | 'fast';
 export const AI_DELAY_MS: Record<AiSpeed, number> = { slow: 1500, normal: 900, fast: 380 };
+
+/** Niveles de la máquina, de menos a más fuerte. */
+export type AiLevel = 'beginner' | 'plaza' | 'veteran' | 'master';
+export const AI_LEVELS: AiLevel[] = ['beginner', 'plaza', 'veteran', 'master'];
+
+/** Opciones de las «Reglas de la casa» que se ofrecen en Ajustes. */
+export const HOUSE_RULE_OPTIONS = {
+  capicuaBonus: [0, 25, 50],
+  targetScore: [75, 100, 150, 200],
+} as const;
 
 export const TIMING = {
   /** Lo que tarda una ficha en deslizarse hasta la mesa. */
@@ -62,22 +73,46 @@ export const TIMING = {
   handEndPauseMs: 700,
 } as const;
 
-/** Pesos de la IA básica. */
+/** Pesos de la IA (Jugador de plaza usa los primeros; Veterano y Maestro, todos). */
 export const AI_WEIGHTS = {
   /** Por cada punto de la ficha (soltar primero las gordas). */
   pips: 1,
   /** Soltar dobles pronto (cuestan de colocar). */
   double: 3,
-  /** Dejar una punta que el siguiente rival sabe que no tiene (por sus pases). */
+  /** Por cada ficha propia que sigue pudiendo jugar por las puntas que quedan (control). */
+  keepControl: 0.8,
+  /** Por cada número distinto que me queda en la mano. */
+  variety: 0.6,
+  /** Veterano: dejar puntas que el siguiente rival seguro que no tiene (por sus pases o porque no quedan). */
   blockNextOpponent: 6,
   /** Lo mismo para el otro rival. */
   blockOtherOpponent: 3,
-  /** Dejar una punta que el compañero no tiene. */
-  blockPartner: -3,
-  /** Por cada ficha propia que sigue pudiendo jugar por las puntas que quedan (control). */
-  keepControl: 0.8,
+  /** Dejar puntas que el compañero seguro que no tiene. */
+  blockPartner: -5,
+  /** Maestro: probabilidad de que el siguiente rival pueda jugar (resta). */
+  probNextOpponent: 8,
+  probOtherOpponent: 4,
+  /** Maestro: probabilidad de que el compañero pueda jugar (suma). */
+  probPartner: 5,
+  /** Multiplica lo anterior si a ese jugador le quedan 2 fichas o menos. */
+  urgency: 2,
+  /** Tapar una punta que puso el rival (su número). */
+  coverOpponentNumber: 1.5,
+  /** Tapar una punta que puso el compañero (su número: «no le tapes la punta»). */
+  coverPartnerNumber: 3,
+  /** Dejar abierta una punta con un número del compañero. */
+  openPartnerNumber: 1.2,
+  /** Dejar abierta una punta con un número del rival. */
+  openOpponentNumber: 1,
+  /** Valor de trancar (por cada punto que se gana o se pierde en el tranque). */
+  tranque: 0.5,
   /** Ganar la mano ya. */
   domino: 1000,
+} as const;
+
+export const AI_TUNING = {
+  /** Para trancar, mi pareja tiene que tener al menos esto menos que la rival (cuentas estimadas). */
+  tranqueMargin: 3,
 } as const;
 
 export const COLORS = {

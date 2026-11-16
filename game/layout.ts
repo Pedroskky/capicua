@@ -91,7 +91,10 @@ function layoutArm(pieces: ArmPiece[], start: Point, sign: 1 | -1, halfWidth: nu
       pendingTurn = false;
       continue;
     }
-    if (Math.abs(p.x + dir.x * 2) > halfWidth) {
+    // Un doble atravesado necesita sitio para él y para la ficha siguiente: si no lo hay, gira ya (el doble hace
+    // de curva). Así una ficha que gira nunca queda pegada al costado de un doble con su otra mitad.
+    const reach = isDouble(piece.tile) ? 3 : 2;
+    if (Math.abs(p.x + dir.x * reach) > halfWidth) {
       placeTurning(piece, dir, turnDir);
       pendingTurn = true;
       continue;
@@ -107,6 +110,42 @@ function layoutArm(pieces: ArmPiece[], start: Point, sign: 1 | -1, halfWidth: nu
     }
   }
   return out;
+}
+
+/** Cómo dibujar una ficha: `first` va arriba (de pie) o a la izquierda (tumbada), según dónde está cada mitad. */
+export interface TileDrawSpec {
+  tile: number;
+  cx: number;
+  cy: number;
+  vertical: boolean;
+  first: number;
+  second: number;
+}
+
+export function tileDrawSpec(t: PlacedTile): TileDrawSpec {
+  const [h1, h2] = t.halves;
+  const h1First = t.vertical ? h1.y <= h2.y : h1.x <= h2.x;
+  return {
+    tile: t.tile,
+    cx: t.cx,
+    cy: t.cy,
+    vertical: t.vertical,
+    first: h1First ? h1.value : h2.value,
+    second: h1First ? h2.value : h1.value,
+  };
+}
+
+/** Las dos mitades tal y como quedan dibujadas (para tests y para «Ver números de la mesa»). */
+export function drawnHalves(spec: TileDrawSpec): [TileHalf, TileHalf] {
+  return spec.vertical
+    ? [
+        { x: spec.cx, y: spec.cy - 0.5, value: spec.first },
+        { x: spec.cx, y: spec.cy + 0.5, value: spec.second },
+      ]
+    : [
+        { x: spec.cx - 0.5, y: spec.cy, value: spec.first },
+        { x: spec.cx + 0.5, y: spec.cy, value: spec.second },
+      ];
 }
 
 export function layoutLine(line: readonly LinePiece[], origin: number, halfWidth = ROW_HALF_WIDTH): TableLayout {

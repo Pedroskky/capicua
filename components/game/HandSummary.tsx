@@ -5,19 +5,28 @@ import type { HandResult, MatchState } from '@/game/engine';
 import { tileOf } from '@/game/tiles';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { FONTS } from '@/components/ui/theme';
-import { playerName, t } from '@/lib/i18n';
+import { playerName, t, teamName } from '@/lib/i18n';
 
 interface HandSummaryProps {
   match: MatchState;
   onNext: () => void;
+  /** «Revisar la mano»: ver la mesa con todas las fichas descubiertas. */
+  onReview: () => void;
 }
 
-export function headline(result: HandResult): string {
-  if (result.kind === 'domino') return t('hand.domino', { name: playerName(result.winnerPlayer ?? 0) });
+export function headline(result: HandResult, mode: MatchState['mode']): string {
+  if (result.kind === 'domino') return t('hand.domino', { name: playerName(result.winnerPlayer ?? 0, mode) });
   return result.winnerTeam === null ? t('hand.tranqueTie') : t('hand.tranque');
 }
 
-export function HandSummary({ match, onNext }: HandSummaryProps) {
+function winsLine(match: MatchState, team: 0 | 1): string {
+  if (match.mode === 'partners') return team === 0 ? t('hand.winsUs') : t('hand.winsThem');
+  return t('hand.winsPlayer', { name: teamName(team, match.mode) });
+}
+
+export function HandSummary({ match, onNext, onReview }: HandSummaryProps) {
+  const mode = match.mode;
+  const seats = match.hand.hands.map((_, i) => i);
   const result = match.hand.result;
   if (!result) return null;
   const finished = match.winnerTeam !== null;
@@ -27,15 +36,15 @@ export function HandSummary({ match, onNext }: HandSummaryProps) {
       <View style={styles.card}>
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.title}>{t('hand.title', { n: match.hand.number })}</Text>
-          <Text style={styles.headline}>{headline(result)}</Text>
+          <Text style={styles.headline}>{headline(result, mode)}</Text>
           {result.winnerTeam !== null && (
-            <Text style={[styles.winner, { color: teamColor }]}>{result.winnerTeam === 0 ? t('hand.winsUs') : t('hand.winsThem')}</Text>
+            <Text style={[styles.winner, { color: teamColor }]}>{winsLine(match, result.winnerTeam)}</Text>
           )}
 
           <Text style={styles.section}>{t('hand.pipsTitle')}</Text>
-          {[0, 1, 2, 3].map((seat) => (
+          {seats.map((seat) => (
             <View key={seat} style={styles.row}>
-              <Text style={[styles.player, { color: seat % 2 === 0 ? COLORS.us : COLORS.them }]}>{playerName(seat)}</Text>
+              <Text style={[styles.player, { color: seat % 2 === 0 ? COLORS.us : COLORS.them }]}>{playerName(seat, mode)}</Text>
               <Text style={styles.tiles} numberOfLines={2}>
                 {match.hand.hands[seat].length === 0
                   ? t('hand.noTiles')
@@ -45,8 +54,8 @@ export function HandSummary({ match, onNext }: HandSummaryProps) {
             </View>
           ))}
           <View style={styles.row}>
-            <Text style={styles.team}>{t('hand.pipsTeam', { team: t('team.us'), n: result.teamPips[0] })}</Text>
-            <Text style={styles.team}>{t('hand.pipsTeam', { team: t('team.them'), n: result.teamPips[1] })}</Text>
+            <Text style={styles.team}>{t('hand.pipsTeam', { team: teamName(0, mode), n: result.teamPips[0] })}</Text>
+            <Text style={styles.team}>{t('hand.pipsTeam', { team: teamName(1, mode), n: result.teamPips[1] })}</Text>
           </View>
 
           <View style={styles.divider} />
@@ -69,11 +78,11 @@ export function HandSummary({ match, onNext }: HandSummaryProps) {
           <Text style={styles.section}>{t('hand.score')}</Text>
           <View style={styles.scoreRow}>
             <View style={styles.scoreBox}>
-              <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{t('team.us')}</Text>
+              <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{teamName(0, mode)}</Text>
               <Text style={styles.score}>{match.scores[0]}</Text>
             </View>
             <View style={styles.scoreBox}>
-              <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{t('team.them')}</Text>
+              <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{teamName(1, mode)}</Text>
               <Text style={styles.score}>{match.scores[1]}</Text>
             </View>
           </View>
@@ -81,6 +90,7 @@ export function HandSummary({ match, onNext }: HandSummaryProps) {
 
           <View style={styles.button}>
             <ActionButton label={finished ? t('hand.seeResult') : t('hand.next')} onPress={onNext} />
+            <ActionButton label={t('hand.review')} variant="secondary" onPress={onReview} />
           </View>
         </ScrollView>
       </View>
@@ -214,5 +224,6 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 10,
     alignItems: 'center',
+    gap: 10,
   },
 });

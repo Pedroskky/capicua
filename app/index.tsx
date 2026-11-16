@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Play, RotateCcw, Settings } from 'lucide-react-native';
+import { Play, Settings, Smartphone, User, Users } from 'lucide-react-native';
 import { COLORS } from '@/game/config';
-import { createMatch } from '@/game/engine';
+import { createMatch, type GameMode } from '@/game/engine';
 import { toSavedMatch, type SavedMatch } from '@/game/savedMatch';
 import { SkiaGate } from '@/components/game/SkiaGate';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { FONTS, shadowText } from '@/components/ui/theme';
 import { matchStore } from '@/lib/matchStore';
-import { t } from '@/lib/i18n';
+import { settingsStore } from '@/lib/settings';
+import { useSettings } from '@/hooks/useSettings';
+import { levelName, t, teamName } from '@/lib/i18n';
 
 const loadTitleArt = () => import('@/components/home/TitleArt');
 
@@ -20,6 +22,7 @@ function newSeed(): number {
 
 export default function Home() {
   const router = useRouter();
+  const { settings } = useSettings();
   const [saved, setSaved] = useState<SavedMatch | null>(() => matchStore.current());
 
   useEffect(() => {
@@ -41,9 +44,10 @@ export default function Home() {
 
   const inProgress = saved && saved.match.winnerTeam === null ? saved.match : null;
 
-  const newGame = () => {
+  const newGame = (mode: GameMode) => {
+    const current = settingsStore.current() ?? settings;
     matchStore
-      .save(toSavedMatch(createMatch(newSeed())))
+      .save(toSavedMatch(createMatch(newSeed(), current.rules, { mode, aiLevel: current.aiLevel })))
       .catch(() => undefined)
       .finally(() => router.push('/game'));
   };
@@ -63,11 +67,18 @@ export default function Home() {
           <>
             <ActionButton label={t('home.continue')} icon={Play} onPress={() => router.push('/game')} />
             <Text style={styles.continueScore}>
-              {t('home.continueScore', { us: inProgress.scores[0], them: inProgress.scores[1] })}
+              {teamName(0, inProgress.mode)} {inProgress.scores[0]} · {teamName(1, inProgress.mode)} {inProgress.scores[1]}
             </Text>
           </>
         )}
-        <ActionButton label={t('home.newGame')} icon={RotateCcw} variant={inProgress ? 'secondary' : 'primary'} onPress={newGame} />
+        <Text style={styles.section}>{t('home.newGameTitle')}</Text>
+        <ActionButton label={t('home.partners')} icon={Users} variant={inProgress ? 'secondary' : 'primary'} onPress={() => newGame('partners')} />
+        <Text style={styles.modeHint}>{t('home.partnersHint')}</Text>
+        <ActionButton label={t('home.single')} icon={User} variant="secondary" onPress={() => newGame('single')} />
+        <Text style={styles.modeHint}>{t('home.singleHint')}</Text>
+        <ActionButton label={t('home.hotseat')} icon={Smartphone} variant="secondary" onPress={() => newGame('hotseat')} />
+        <Text style={styles.modeHint}>{t('home.hotseatHint')}</Text>
+        <Text style={styles.level}>{t('home.levelLine', { level: levelName(settings.aiLevel) })}</Text>
         <ActionButton label={t('home.settings')} icon={Settings} variant="secondary" onPress={() => router.push('/settings')} />
       </View>
     </SafeAreaView>
@@ -84,8 +95,8 @@ const styles = StyleSheet.create({
   },
   hero: {
     alignItems: 'center',
-    paddingTop: 36,
-    gap: 8,
+    paddingTop: 16,
+    gap: 6,
   },
   art: {
     width: 300,
@@ -111,7 +122,23 @@ const styles = StyleSheet.create({
   },
   buttons: {
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+  },
+  section: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+  },
+  modeHint: {
+    marginTop: -8,
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  level: {
+    fontSize: 12,
+    color: COLORS.accent,
   },
   continueScore: {
     marginTop: -4,

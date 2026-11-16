@@ -10,14 +10,15 @@ import { toSavedMatch, type SavedMatch } from '@/game/savedMatch';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { FONTS, shadowText } from '@/components/ui/theme';
 import { matchStore } from '@/lib/matchStore';
-import { playerName, t } from '@/lib/i18n';
+import { settingsStore } from '@/lib/settings';
+import { playerName, t, teamName } from '@/lib/i18n';
 
 function newSeed(): number {
   return (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
 }
 
-function describeHand(r: HandResult): string {
-  if (r.kind === 'domino') return `${t('result.handDomino')} · ${playerName(r.winnerPlayer ?? 0)}`;
+function describeHand(r: HandResult, mode: 'partners' | 'single' | 'hotseat'): string {
+  if (r.kind === 'domino') return `${t('result.handDomino')} · ${playerName(r.winnerPlayer ?? 0, mode)}`;
   return r.winnerTeam === null ? `${t('result.handTranque')} · ${t('result.handTie')}` : t('result.handTranque');
 }
 
@@ -40,8 +41,10 @@ export default function ResultScreen() {
   const match = saved?.match.winnerTeam !== null ? saved?.match : null;
 
   const playAgain = () => {
+    const old = saved?.match;
+    const current = settingsStore.current();
     matchStore
-      .save(toSavedMatch(createMatch(newSeed())))
+      .save(toSavedMatch(createMatch(newSeed(), current?.rules ?? old?.rules, { mode: old?.mode ?? 'partners', aiLevel: current?.aiLevel ?? old?.aiLevel })))
       .catch(() => undefined)
       .finally(() => router.replace('/game'));
   };
@@ -56,23 +59,33 @@ export default function ResultScreen() {
   }
 
   const won = match.winnerTeam === 0;
+  const mode = match.mode;
+  const title =
+    mode === 'partners'
+      ? won
+        ? t('result.win')
+        : t('result.lose')
+      : mode === 'single'
+        ? won
+          ? t('result.youWin')
+          : t('result.youLose', { name: playerName(1, mode) })
+        : t('result.winPlayer', { name: playerName(match.winnerTeam ?? 0, mode) });
+  const zapateroLine = mode === 'partners' ? `${t('call.zapatero')} ${won ? t('result.zapatero') : t('result.zapateroThem')}` : t('result.zapateroWin');
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={[styles.title, shadowText, { color: won ? COLORS.accent : COLORS.them }]}>{won ? t('result.win') : t('result.lose')}</Text>
+        <Text style={[styles.title, shadowText, { color: won || mode === 'hotseat' ? COLORS.accent : COLORS.them }]}>{title}</Text>
         {match.zapatero && (
-          <Text style={styles.zapatero}>
-            {t('call.zapatero')} {won ? t('result.zapatero') : t('result.zapateroThem')}
-          </Text>
+          <Text style={styles.zapatero}>{zapateroLine}</Text>
         )}
         <Text style={styles.section}>{t('result.final')}</Text>
         <View style={styles.scoreRow}>
           <View style={[styles.scoreBox, won && styles.winnerBox]}>
-            <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{t('team.us')}</Text>
+            <Text style={[styles.scoreTeam, { color: COLORS.us }]}>{teamName(0, mode)}</Text>
             <Text style={styles.score}>{match.scores[0]}</Text>
           </View>
           <View style={[styles.scoreBox, !won && styles.winnerBox]}>
-            <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{t('team.them')}</Text>
+            <Text style={[styles.scoreTeam, { color: COLORS.them }]}>{teamName(1, mode)}</Text>
             <Text style={styles.score}>{match.scores[1]}</Text>
           </View>
         </View>
@@ -83,7 +96,7 @@ export default function ResultScreen() {
             <View key={i} style={styles.row}>
               <Text style={styles.handNo}>{t('result.handRow', { n: i + 1 })}</Text>
               <Text style={styles.handKind} numberOfLines={2}>
-                {describeHand(r)}
+                {describeHand(r, match.mode)}
                 {r.capicua ? ` · ${t('call.capicua')}` : ''}
               </Text>
               <Text style={[styles.points, { color: r.winnerTeam === 0 ? COLORS.us : r.winnerTeam === 1 ? COLORS.them : COLORS.textMuted }]}>
