@@ -9,6 +9,8 @@ import { playerName, t, teamName, type TranslationKey } from '@/lib/i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ActivityReport } from '@/game/activity';
 import { rival } from '@/game/tournament';
+import { ShareButton } from '@/components/share/ShareButton';
+import { matchShareCard } from '@/components/share/cards';
 
 interface HandSummaryProps {
   match: MatchState;
@@ -126,6 +128,7 @@ export function HandSummary({ match, onNext, onReview, report }: HandSummaryProp
           <View style={styles.button}>
             <ActionButton label={finished ? t('hand.seeResult') : t('hand.next')} onPress={onNext} />
             <ActionButton label={t('hand.review')} variant="secondary" onPress={onReview} />
+            {result.capicua && (mode === 'hotseat' || result.winnerTeam === 0) && <ShareButton card={matchShareCard('capicua', match)} />}
           </View>
         </ScrollView>
       </View>

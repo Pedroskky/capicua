@@ -1,0 +1,7 @@
+{
+  "name": "startio-ads",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Módulo local de Expo que envuelve el SDK oficial de Start.io para Android (com.startapp:inapp-sdk).",
+  "main": "index.ts"
+}

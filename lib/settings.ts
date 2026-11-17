@@ -21,6 +21,8 @@ export interface GameSettings {
   devTableNumbers: boolean;
   /** Solo con DEV_MENU: ver las manos de todos. */
   devShowHands: boolean;
+  /** El tutorial ya se vio (o se pulsó «Ya sé jugar»). */
+  tutorialSeen: boolean;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   tileCounter: false,
   devTableNumbers: false,
   devShowHands: false,
+  tutorialSeen: false,
 };
 
 const LANGUAGES: LanguagePreference[] = ['auto', 'es', 'en'];
@@ -52,6 +55,7 @@ export function normalizeSettings(raw: unknown): GameSettings {
     tileCounter: data.tileCounter === true,
     devTableNumbers: data.devTableNumbers === true,
     devShowHands: data.devShowHands === true,
+    tutorialSeen: data.tutorialSeen === true,
   };
 }
 

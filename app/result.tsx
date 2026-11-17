@@ -17,7 +17,13 @@ import { TOURNAMENT } from '@/game/config';
 import { RewardLines } from '@/components/game/HandSummary';
 import { getLastMatchReport } from '@/lib/lastReport';
 import { progressStore } from '@/lib/progress';
-import { Star } from 'lucide-react-native';
+import { Clapperboard, Star } from 'lucide-react-native';
+import { canRetryKeepingStreak, doubleCoinsBonus } from '@/game/ads';
+import { maybeShowInterstitial, showRewarded } from '@/lib/ads';
+import { useRewardedReady } from '@/hooks/useRewardedAd';
+import { addDoubleCoins, keepWinStreak } from '@/lib/activity';
+import { ShareButton } from '@/components/share/ShareButton';
+import { matchShareCard } from '@/components/share/cards';
 
 function newSeed(): number {
   return (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
@@ -45,6 +51,17 @@ export default function ResultScreen() {
   }, []);
 
   const match = saved?.match.winnerTeam !== null ? saved?.match : null;
+  const [doubled, setDoubled] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const doubleReady = useRewardedReady('doubleCoins');
+  const retryReady = useRewardedReady('tournamentRetry');
+
+  /** Al salir del resultado de una partida a 100: intersticial si toca (reglas en game/ads.ts) y luego seguir. */
+  const leave = (go: () => void) => {
+    maybeShowInterstitial('matchOver')
+      .catch(() => false)
+      .finally(go);
+  };
 
   const playAgain = () => {
     const old = saved?.match;
@@ -65,11 +82,36 @@ export default function ResultScreen() {
   }
 
   const won = match.winnerTeam === 0;
+  const doubleBonus = doubleCoinsBonus(won, getLastMatchReport()?.coins ?? 0);
+  const onDouble = () => {
+    showRewarded('doubleCoins')
+      .then((earned) => {
+        if (!earned || doubled) return;
+        setDoubled(true);
+        addDoubleCoins(doubleBonus).catch(() => undefined);
+      })
+      .catch(() => undefined);
+  };
   const mode = match.mode;
   const rivalId = match.tournament !== null ? rival(match.tournament).id : null;
   const report = getLastMatchReport();
   const progress = progressStore.current();
   const nextPair = match.tournament !== null && match.tournament + 1 < RIVALS.length && progress && isUnlocked(progress, match.tournament + 1) ? match.tournament + 1 : null;
+  const retryAllowed = canRetryKeepingStreak(match.tournament, won, report?.winStreakBefore ?? 0);
+  /** Vídeo visto entero: se devuelve la racha de victorias y se vuelve a jugar contra la misma pareja. */
+  const onRetryKeeping = () => {
+    showRewarded('tournamentRetry')
+      .then((earned) => {
+        if (!earned) {
+          setNotice(t('ads.noVideo'));
+          return;
+        }
+        keepWinStreak(report?.winStreakBefore ?? 0)
+          .catch(() => undefined)
+          .finally(() => playTournament(match.tournament ?? 0));
+      })
+      .catch(() => undefined);
+  };
   const playTournament = (index: number) => {
     const current = settingsStore.current();
     const rules = { ...(current?.rules ?? match.rules), targetScore: TOURNAMENT.targetScore };
@@ -106,11 +148,17 @@ export default function ResultScreen() {
         )}
         {report && (
           <View style={styles.rewardCard}>
-            {report.coins > 0 && <Text style={styles.rewardTotal}>{t('reward.total', { n: report.coins })}</Text>}
+            {report.coins > 0 && <Text style={styles.rewardTotal}>{t('reward.total', { n: report.coins + (doubled ? doubleBonus : 0) })}</Text>}
             <RewardLines report={report} />
             <Text style={styles.eloLine}>{t('reward.elo', { before: report.eloBefore, after: report.eloAfter })}</Text>
+            {doubleBonus > 0 && !doubled && doubleReady && (
+              <ActionButton label={t('ads.doubleCoins', { n: doubleBonus })} icon={Clapperboard} onPress={onDouble} />
+            )}
+            {doubled && <Text style={styles.notice}>{t('ads.doubled')}</Text>}
           </View>
         )}
+        {notice && <Text style={styles.notice}>{notice}</Text>}
+        {won && match.zapatero && mode !== 'hotseat' && <ShareButton card={matchShareCard('zapatero', match)} />}
         <Text style={styles.section}>{t('result.final')}</Text>
         <View style={styles.scoreRow}>
           <View style={[styles.scoreBox, won && styles.winnerBox]}>
@@ -145,14 +193,22 @@ export default function ResultScreen() {
         <View style={styles.buttons}>
           {match.tournament !== null ? (
             <>
-              {won && nextPair !== null && <ActionButton label={t('tour.next')} onPress={() => playTournament(nextPair)} />}
-              <ActionButton label={t('tour.replay')} icon={RotateCcw} variant={won && nextPair !== null ? 'secondary' : 'primary'} onPress={() => playTournament(match.tournament ?? 0)} />
-              <ActionButton label={t('tour.back')} variant="secondary" onPress={() => router.replace('/tournament')} />
+              {won && nextPair !== null && <ActionButton label={t('tour.next')} onPress={() => leave(() => playTournament(nextPair))} />}
+              {retryAllowed && retryReady && (
+                <ActionButton label={t('ads.retryKeep', { n: report?.winStreakBefore ?? 0 })} icon={Clapperboard} onPress={onRetryKeeping} />
+              )}
+              <ActionButton
+                label={t('tour.replay')}
+                icon={RotateCcw}
+                variant={(won && nextPair !== null) || (retryAllowed && retryReady) ? 'secondary' : 'primary'}
+                onPress={() => leave(() => playTournament(match.tournament ?? 0))}
+              />
+              <ActionButton label={t('tour.back')} variant="secondary" onPress={() => leave(() => router.replace('/tournament'))} />
             </>
           ) : (
-            <ActionButton label={t('result.playAgain')} icon={RotateCcw} onPress={playAgain} />
+            <ActionButton label={t('result.playAgain')} icon={RotateCcw} onPress={() => leave(playAgain)} />
           )}
-          <ActionButton label={t('result.home')} icon={Home} variant="secondary" onPress={() => router.replace('/')} />
+          <ActionButton label={t('result.home')} icon={Home} variant="secondary" onPress={() => leave(() => router.replace('/'))} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -183,6 +239,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontFamily: FONTS.title,
     fontSize: 40,
+    textAlign: 'center',
+  },
+  notice: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.us,
     textAlign: 'center',
   },
   vs: {

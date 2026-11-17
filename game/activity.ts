@@ -4,7 +4,7 @@ import { newlyUnlocked } from '@/game/achievements';
 import { applyEvent, challengesForToday, claim, type Challenge, type DailyChallenges } from '@/game/challenges';
 import { addCoins, buy, handCoins, matchCoins, type Progress } from '@/game/economy';
 import type { ActivityEvent } from '@/game/events';
-import { applyStats, type Stats } from '@/game/stats';
+import { applyStats, countGameToday, type Stats } from '@/game/stats';
 import { applyActivityToStreak, type StreakState } from '@/game/streak';
 import { applyTournamentResult } from '@/game/tournament';
 
@@ -28,6 +28,8 @@ export interface ActivityReport {
   tournament: { stars: number; champion: boolean; unlockedNext: boolean } | null;
   eloBefore: number;
   eloAfter: number;
+  /** Racha de victorias antes de esta partida (para «reintentar sin perder la racha»). */
+  winStreakBefore: number;
 }
 
 export function applyActivity(state: ActivityState, event: ActivityEvent, today: string): { state: ActivityState; report: ActivityReport } {
@@ -65,7 +67,8 @@ export function applyActivity(state: ActivityState, event: ActivityEvent, today:
   }
 
   const { daily, completed } = applyEvent(challengesForToday(state.daily, today), event);
-  const stats = applyStats(state.stats, event);
+  const counted = applyStats(state.stats, event);
+  const stats = event.type === 'hand' ? counted : countGameToday(counted, today);
   const achievementsNew = newlyUnlocked({ stats, progress, streak }, state.achievements);
   const coins = breakdown.reduce((a, b) => a + b.amount, 0);
   return {
@@ -79,6 +82,7 @@ export function applyActivity(state: ActivityState, event: ActivityEvent, today:
       tournament,
       eloBefore: state.stats.elo.rating,
       eloAfter: stats.elo.rating,
+      winStreakBefore: state.stats.winStreak,
     },
   };
 }
@@ -100,4 +104,15 @@ export function purchase(state: ActivityState, id: string): { state: ActivitySta
   const stats = { ...state.stats, purchases: state.stats.purchases + 1 };
   const fresh = newlyUnlocked({ stats, progress: r.progress, streak: state.streak }, state.achievements);
   return { state: { ...state, progress: r.progress, stats, achievements: [...state.achievements, ...fresh] }, newAchievements: fresh };
+}
+
+/** Vídeo «duplicar monedas»: suma otra vez lo ganado en la partida. */
+export function grantDoubleCoins(state: ActivityState, bonus: number): ActivityState {
+  return { ...state, progress: addCoins(state.progress, bonus) };
+}
+
+/** Vídeo «reintentar sin perder la racha»: devuelve la racha de victorias que se perdió al caer en el torneo. */
+export function restoreWinStreak(state: ActivityState, winStreak: number): ActivityState {
+  const stats = { ...state.stats, winStreak: Math.max(state.stats.winStreak, winStreak) };
+  return { ...state, stats: { ...stats, bestWinStreak: Math.max(stats.bestWinStreak, stats.winStreak) } };
 }

@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.startioads'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.startioads"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // SDK oficial de Start.io (Maven Central). Última versión estable al integrarlo.
+  implementation 'com.startapp:inapp-sdk:5.4.0'
+}

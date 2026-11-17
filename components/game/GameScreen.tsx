@@ -6,7 +6,10 @@ import { AppState, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } f
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeOut, ZoomIn } from 'react-native-reanimated';
-import { Lightbulb, X } from 'lucide-react-native';
+import { Clapperboard, Lightbulb, X } from 'lucide-react-native';
+import { canHintByAd, hintsLeft } from '@/game/ads';
+import { showRewarded } from '@/lib/ads';
+import { useRewardedReady } from '@/hooks/useRewardedAd';
 import { AI_DELAY_MS, COLORS, TIMING } from '@/game/config';
 import { aiLevelFor, aiView, bestMoveHint, chooseMove } from '@/game/ai';
 import {
@@ -299,11 +302,28 @@ export default function GameScreen() {
     [pending, hint, doMove, viewer],
   );
 
-  const askHint = () => {
-    const best = bestMoveHint(match, viewer);
+  // Pistas: FREE_HINTS_PER_MATCH gratis por partida; cuando se acaban, una más por cada vídeo.
+  const hintsRemaining = hintsLeft(match.hintsUsed, match.hintsEarned);
+  const hintVideoReady = useRewardedReady('hint');
+  const showHint = () => {
     setPending(null);
-    setHint(best);
+    setHint(bestMoveHint(live.current.match, viewer));
     buzz('tap');
+  };
+  const askHint = () => {
+    if (hintsRemaining > 0) {
+      setMatch((m) => ({ ...m, hintsUsed: m.hintsUsed + 1 }));
+      showHint();
+      return;
+    }
+    if (!canHintByAd(match.hintsUsed, match.hintsEarned)) return;
+    showRewarded('hint')
+      .then((earned) => {
+        if (!earned) return;
+        setMatch((m) => ({ ...m, hintsEarned: m.hintsEarned + 1, hintsUsed: m.hintsUsed + 1 }));
+        showHint();
+      })
+      .catch(() => undefined);
   };
 
   const onLanded = useCallback(() => {
@@ -415,10 +435,10 @@ export default function GameScreen() {
             <View style={[styles.statusRow, { top: regions.fanTop - 34 }]} pointerEvents="box-none">
               <Text style={[styles.status, myTurn && styles.statusMine]}>{status}</Text>
               {bubbles[viewer] && <Text style={styles.myPass}>{bubbles[viewer]}</Text>}
-              {myTurn && !drawable && (playable?.size ?? 0) > 0 && (
+              {myTurn && !drawable && (playable?.size ?? 0) > 0 && (hintsRemaining > 0 || hintVideoReady) && (
                 <Pressable accessibilityRole="button" accessibilityLabel={t('game.hint')} onPress={askHint} style={({ pressed }) => [styles.hint, pressed && styles.pressed]}>
-                  <Lightbulb size={16} color={COLORS.accentText} strokeWidth={2.4} />
-                  <Text style={styles.hintText}>{t('game.hint')}</Text>
+                  {hintsRemaining > 0 ? <Lightbulb size={16} color={COLORS.accentText} strokeWidth={2.4} /> : <Clapperboard size={16} color={COLORS.accentText} strokeWidth={2.4} />}
+                  <Text style={styles.hintText}>{hintsRemaining > 0 ? t('game.hintsLeft', { n: hintsRemaining }) : t('ads.hintVideo')}</Text>
                 </Pressable>
               )}
             </View>

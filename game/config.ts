@@ -139,6 +139,8 @@ export const COLORS = {
   playable: '#FFD166',
   us: '#7FD1AE',
   them: '#F4A261',
+  /** Verde de «todo bien» (panel de diagnóstico de anuncios, copiado de Jaque Épico). */
+  success: '#7FD1AE',
 } as const;
 
 export const SOUND_VOLUME = {
@@ -249,3 +251,32 @@ export const ELO_START = 1000;
 export const ELO_K = 32;
 export const ELO_HISTORY = 60;
 export const LEVEL_ELO: Record<AiLevel, number> = { beginner: 800, plaza: 1100, veteran: 1400, master: 1700 };
+
+// --- Fase 4: anuncios (Start.io, como Jaque Épico) -----------------------------------------------------------
+
+export type AdsProviderId = 'startio';
+/** Único proveedor de anuncios. */
+export const ADS_PROVIDER: AdsProviderId = 'startio';
+/** App ID de Capicúa en el panel de Start.io. También en app.json (plugin de startio-ads); lo vigila game/startioAppId.test.ts. */
+export const STARTIO_APP_ID = '210753000';
+/** Si un anuncio no carga (sin conexión o sin relleno), se vuelve a pedir a los N segundos. */
+export const ADS_RETRY_SECONDS = 30;
+/** Como mucho un anuncio a pantalla completa cada N segundos. */
+export const INTERSTITIAL_MIN_SECONDS = 180;
+/** Nunca en la primera partida del día: hace falta haber terminado al menos N hoy (contando la que acaba). */
+export const INTERSTITIAL_MIN_GAMES_TODAY = 2;
+/** Duplicar las monedas de una victoria viendo un vídeo. */
+export const DOUBLE_COINS_FACTOR = 2;
+/** Pistas gratis por partida; después, una más por cada vídeo. */
+export const FREE_HINTS_PER_MATCH = 3;
+export const PRIVACY_POLICY_URL = 'https://pedroskky.github.io/capicua/privacy.html';
+
+/** Imagen para compartir (capicúa, zapatero, campeones del torneo). */
+export const SHARE_IMAGE = {
+  width: 1080,
+  height: 1080,
+  fileName: 'capicua.png',
+  titleSize: 130,
+  lineSize: 58,
+  footerSize: 76,
+} as const;
