@@ -64,4 +64,21 @@ describe('EAS y Google Play', () => {
       expect(existsSync(join(ROOT, f)), f).toBe(true);
     }
   });
+
+  it('capturas de Google Play: 6 por idioma de 1080×1920 y la imagen destacada en inglés (npm run store-shots)', () => {
+    const size = (f: string) => {
+      const b = readFileSync(join(ROOT, f));
+      return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), colorType: b[25] };
+    };
+    for (const lang of ['es', 'en']) {
+      for (let n = 1; n <= 6; n++) {
+        const f = `store/${lang}-0${n}.png`;
+        expect(existsSync(join(ROOT, f)), f).toBe(true);
+        expect(size(f), f).toEqual({ w: 1080, h: 1920, colorType: 2 });
+      }
+    }
+    expect(size('store/feature-graphic-en.png')).toMatchObject({ w: 1024, h: 500 });
+    const es = readFileSync(join(ROOT, 'lib/i18n/es.ts'), 'utf8');
+    expect(es).toContain("'store.shot1': \"Dominó venezolano por parejas\"");
+  });
 });

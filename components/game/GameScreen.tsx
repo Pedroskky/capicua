@@ -36,6 +36,7 @@ import { rival } from '@/game/tournament';
 import type { ActivityReport } from '@/game/activity';
 import { PHRASE_PLAY_CHANCE, PHRASES_PER_MOMENT, type PhraseMoment } from '@/game/config';
 import { setTileSkin } from '@/components/art/tiles';
+import { Confetti } from '@/components/art/Confetti';
 import { recordActivity } from '@/lib/activity';
 import { progressStore } from '@/lib/progress';
 import { setLastMatchReport } from '@/lib/lastReport';
@@ -506,6 +507,7 @@ export default function GameScreen() {
         </View>
       )}
 
+      {banner && (banner === t('call.capicua') || banner === t('call.zapatero')) && <Confetti />}
       {banner && (
         <View pointerEvents="none" style={styles.bannerWrap}>
           <Animated.Text key={banner} entering={ZoomIn.springify()} exiting={FadeOut} style={[styles.banner, shadowText]}>
