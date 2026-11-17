@@ -50,7 +50,14 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-sharing",
+      [
+        "./modules/startio-ads/app.plugin.js",
+        {
+          "appId": "210753000"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

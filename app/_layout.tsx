@@ -13,6 +13,9 @@ import { useSettings } from '@/hooks/useSettings';
 import { setLanguagePreference } from '@/lib/i18n';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { LastCrashNotice } from '@/components/ui/LastCrashNotice';
+import { AdConsentModal } from '@/components/ui/AdConsentModal';
+import { ADS_SUPPORTED, initAds } from '@/lib/ads';
+import { loadStartupConsent, saveAdConsent } from '@/lib/ads/consent';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -48,9 +51,28 @@ function AppShell() {
     if (ready) SplashScreen.hideAsync().catch(() => undefined);
   }, [ready]);
 
+  // Anuncios: en el EEE, Reino Unido y Suiza se pregunta antes de iniciar Start.io. Sin SDK (web, Expo Go) no se
+  // hace nada. El App ID ya lo leyó el SDK del AndroidManifest al abrir la app.
+  const [askConsent, setAskConsent] = useState(false);
+  useEffect(() => {
+    if (!ADS_SUPPORTED) return;
+    loadStartupConsent()
+      .then((startup) => {
+        if (startup.kind === 'ask') setAskConsent(true);
+        else initAds(startup.personalized).catch(() => undefined);
+      })
+      .catch(() => undefined);
+  }, []);
+  const chooseConsent = (personalized: boolean) => {
+    setAskConsent(false);
+    saveAdConsent(personalized).catch(() => undefined);
+    initAds(personalized).catch(() => undefined);
+  };
+
   if (!ready) return null;
 
   return (
+    <>
     <Stack
       key={settings.language}
       screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.background }, animation: 'fade' }}
@@ -59,7 +81,10 @@ function AppShell() {
       <Stack.Screen name="game" options={{ gestureEnabled: false }} />
       <Stack.Screen name="result" options={{ gestureEnabled: false }} />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="tutorial" options={{ gestureEnabled: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
+    <AdConsentModal visible={askConsent} onChoose={chooseConsent} />
+    </>
   );
 }

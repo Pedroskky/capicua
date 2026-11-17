@@ -60,7 +60,7 @@ describe('pantallas: zona segura y desplazamiento', () => {
     });
   }
 
-  const LONG = ['app/(tabs)/index.tsx', 'app/settings.tsx', 'app/result.tsx', 'app/(tabs)/tournament.tsx', 'app/(tabs)/shop.tsx', 'app/(tabs)/profile.tsx', 'components/game/HandSummary.tsx'];
+  const LONG = ['app/(tabs)/index.tsx', 'app/settings.tsx', 'app/result.tsx', 'app/(tabs)/tournament.tsx', 'app/(tabs)/shop.tsx', 'app/(tabs)/profile.tsx', 'components/game/HandSummary.tsx', 'app/tutorial.tsx'];
   for (const screen of LONG) {
     it(`${screen} se puede desplazar`, () => {
       expect(scrolls(reachable(screen)), `${screen} no tiene ScrollView`).toBe(true);

@@ -87,6 +87,9 @@ export interface MatchState {
   recordedHands: number;
   /** La partida terminada ya se apuntó. */
   recordedMatch: boolean;
+  /** Pistas usadas en esta partida y pistas extra ganadas viendo un vídeo. */
+  hintsUsed: number;
+  hintsEarned: number;
 }
 
 export interface MatchOptions {
@@ -202,6 +205,8 @@ export function createMatch(seed: number, rules: DominoRules = DEFAULT_RULES, op
     tournament: options.tournament ?? null,
     recordedHands: 0,
     recordedMatch: false,
+    hintsUsed: 0,
+    hintsEarned: 0,
   };
 }
 

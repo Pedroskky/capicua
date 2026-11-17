@@ -133,6 +133,13 @@ describe('arranque seguro en Android', () => {
     }
   });
 
+  it('el App ID de Start.io va en el AndroidManifest con el config plugin', () => {
+    const app = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')) as { expo: { plugins: unknown[] } };
+    const plugin = app.expo.plugins.find((p) => Array.isArray(p) && p[0] === './modules/startio-ads/app.plugin.js') as [string, { appId: string }] | undefined;
+    expect(plugin?.[1].appId).toMatch(/^\d{6,12}$/);
+    expect(inRepo('modules/startio-ads/app.plugin.js')).toBe(true);
+  });
+
   it('las fuentes tienen un plan B si no cargan', () => {
     const layout = readFileSync(join(ROOT, 'app/_layout.tsx'), 'utf8');
     expect(layout).toMatch(/fontError/);

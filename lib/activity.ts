@@ -1,11 +1,14 @@
 // Apunta manos y partidas (monedas, torneo, retos, racha, ELO, estadísticas y logros), cobra retos, compra y equipa.
 // La lógica está en game/activity.ts; aquí solo se cargan y guardan los almacenes. Nunca lanza.
-import { applyActivity, claimChallenge, purchase, type ActivityReport, type ActivityState } from '@/game/activity';
+import { applyActivity, claimChallenge, grantDoubleCoins, purchase, restoreWinStreak, type ActivityReport, type ActivityState } from '@/game/activity';
 import { challengesForToday, generateDailyChallenges } from '@/game/challenges';
 import { localDateKey } from '@/game/dates';
 import { addCoins, equip } from '@/game/economy';
 import type { ActivityEvent } from '@/game/events';
 import { achievementsStore, dailyStore, progressStore, statsStore, streakStore } from '@/lib/progress';
+
+// lib/ads (copiado de Jaque Épico) lee las estadísticas desde aquí.
+export { statsStore };
 
 async function loadState(): Promise<ActivityState> {
   const [progress, daily, streak, stats, achievements] = await Promise.all([
@@ -118,6 +121,24 @@ export async function devResetChallenges(): Promise<void> {
     const today = localDateKey();
     const stored = await dailyStore.load();
     await dailyStore.save(generateDailyChallenges(today, stored.claimedHistory.filter((id) => !id.startsWith(today))));
+  } catch {
+    // Opcional.
+  }
+}
+
+/** Vídeo «duplicar monedas» visto entero: suma el extra. */
+export async function addDoubleCoins(bonus: number): Promise<void> {
+  try {
+    await saveState(grantDoubleCoins(await loadState(), bonus));
+  } catch {
+    // Sin guardado no se cobra; el juego sigue.
+  }
+}
+
+/** Vídeo «reintentar sin perder la racha» visto entero. */
+export async function keepWinStreak(winStreak: number): Promise<void> {
+  try {
+    await saveState(restoreWinStreak(await loadState(), winStreak));
   } catch {
     // Opcional.
   }

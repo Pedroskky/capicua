@@ -62,7 +62,7 @@ describe('migración de la partida guardada', () => {
     delete v1.match.hand.boneyard;
     delete v1.match.hand.opening;
     const loaded = normalizeSavedMatch(v1)!;
-    expect(loaded.version).toBe(3);
+    expect(loaded.version).toBe(4);
     expect(loaded.match.mode).toBe('partners');
     expect(loaded.match.hand.boneyard).toEqual([]);
     expect(loaded.match.hand.hands).toEqual(m.hand.hands);

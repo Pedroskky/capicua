@@ -26,6 +26,9 @@ export interface Stats {
   purchases: number;
   elo: EloState;
   eloBest: number;
+  /** Partidas terminadas hoy (`todayDate`, AAAAMMDD): para no poner un intersticial en la primera del día. */
+  todayDate: string;
+  gamesToday: number;
 }
 
 export const INITIAL_STATS: Stats = {
@@ -48,7 +51,14 @@ export const INITIAL_STATS: Stats = {
   purchases: 0,
   elo: INITIAL_ELO,
   eloBest: ELO_START,
+  todayDate: '',
+  gamesToday: 0,
 };
+
+/** Cuenta una partida terminada hoy. */
+export function countGameToday(stats: Stats, today: string): Stats {
+  return { ...stats, todayDate: today, gamesToday: stats.todayDate === today ? stats.gamesToday + 1 : 1 };
+}
 
 export function applyStats(stats: Stats, event: ActivityEvent): Stats {
   if (event.type === 'hotseat') return { ...stats, hotseatMatches: stats.hotseatMatches + 1 };
@@ -87,7 +97,7 @@ export function normalizeStats(raw: unknown): Stats {
   const s = raw as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(INITIAL_STATS) as (keyof Stats)[]) {
-    if (key === 'elo') continue;
+    if (key === 'elo' || key === 'todayDate') continue;
     out[key] = num(s[key], INITIAL_STATS[key] as number);
   }
   const e = (s.elo ?? {}) as Partial<EloState>;
@@ -95,5 +105,10 @@ export function normalizeStats(raw: unknown): Stats {
     rating: Number.isFinite(e.rating) ? Math.round(e.rating as number) : ELO_START,
     history: Array.isArray(e.history) ? e.history.filter((v): v is number => Number.isFinite(v)).slice(-200) : [],
   };
-  return { ...(out as unknown as Stats), elo, eloBest: Math.max(num(s.eloBest, ELO_START), elo.rating) };
+  return {
+    ...(out as unknown as Stats),
+    elo,
+    eloBest: Math.max(num(s.eloBest, ELO_START), elo.rating),
+    todayDate: typeof s.todayDate === 'string' ? s.todayDate : '',
+  };
 }

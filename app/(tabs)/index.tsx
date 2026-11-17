@@ -18,6 +18,8 @@ import { ActionButton } from '@/components/ui/ActionButton';
 import { TabHeader } from '@/components/ui/TabHeader';
 import { FONTS, shadowText } from '@/components/ui/theme';
 import { useDaily, useStreak } from '@/hooks/useProgress';
+import { shouldShowTutorial } from '@/game/tutorial';
+import { statsStore } from '@/lib/progress';
 import { useSettings } from '@/hooks/useSettings';
 import { claimDailyChallenge, loadTodayChallenges } from '@/lib/activity';
 import { matchStore } from '@/lib/matchStore';
@@ -51,6 +53,12 @@ export default function PlayTab() {
       if (active) setSaved(value);
     });
     loadTodayChallenges().catch(() => undefined);
+    // La primera vez que se abre la app: el tutorial (nunca a quien ya jugaba).
+    Promise.all([settingsStore.load(), statsStore.load(), matchStore.load()])
+      .then(([s, stats, m]) => {
+        if (active && shouldShowTutorial(s.tutorialSeen, stats.matchesPlayed, m !== null)) router.push('/tutorial');
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
       unsubscribe();

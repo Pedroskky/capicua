@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AI_LEVELS, COLORS, DEFAULT_RULES, HOUSE_RULE_OPTIONS, type AiLevel, type AiSpeed, type DominoRules } from '@/game/config';
+import { AI_LEVELS, COLORS, DEFAULT_RULES, HOUSE_RULE_OPTIONS, PRIVACY_POLICY_URL, type AiLevel, type AiSpeed, type DominoRules } from '@/game/config';
 import { findScenario, type DevScenario } from '@/game/devScenarios';
 import { toSavedMatch } from '@/game/savedMatch';
 import { ActionButton } from '@/components/ui/ActionButton';
@@ -10,6 +10,12 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Segmented } from '@/components/ui/Segmented';
 import { SettingRow } from '@/components/ui/SettingRow';
 import { useSettings } from '@/hooks/useSettings';
+import { useStoredValue } from '@/hooks/useStoredValue';
+import { AdConsentModal } from '@/components/ui/AdConsentModal';
+import { AdDiagnosticsPanel } from '@/components/ui/AdDiagnosticsPanel';
+import { ADS_SUPPORTED, applyAdConsent } from '@/lib/ads';
+import { adConsentStore, saveAdConsent } from '@/lib/ads/consent';
+import { FileText, GraduationCap, ShieldCheck } from 'lucide-react-native';
 import { DEV_MENU } from '@/lib/devMenu';
 import { setForcedScenario } from '@/lib/devForced';
 import { matchStore } from '@/lib/matchStore';
@@ -24,6 +30,13 @@ export default function SettingsScreen() {
   const [crash, setCrash] = useState(false);
   if (crash) throw new Error('Prueba de «Algo salió mal» desde Ajustes');
 
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consent] = useStoredValue(adConsentStore, null);
+  const chooseConsent = (personalized: boolean) => {
+    setConsentOpen(false);
+    saveAdConsent(personalized).catch(() => undefined);
+    applyAdConsent(personalized);
+  };
   const rules = settings.rules;
   const setRule = (patch: Partial<DominoRules>) => updateSettings({ rules: { ...rules, ...patch } });
 
@@ -73,6 +86,10 @@ export default function SettingsScreen() {
 
         <Text style={styles.section}>{t('settings.help')}</Text>
         <SettingRow label={t('settings.tileCounter')} value={settings.tileCounter} onToggle={() => updateSettings({ tileCounter: !settings.tileCounter })} />
+
+        <View style={styles.center}>
+          <ActionButton variant="secondary" icon={GraduationCap} label={t('tutorial.repeat')} onPress={() => router.push('/tutorial')} />
+        </View>
 
         <Text style={styles.section}>{t('settings.houseRules')}</Text>
         <Text style={styles.note}>{t('settings.houseRulesNote')}</Text>
@@ -139,6 +156,23 @@ export default function SettingsScreen() {
           ]}
         />
 
+        <Text style={styles.section}>{t('settings.privacy')}</Text>
+        <View style={styles.center}>
+          {ADS_SUPPORTED && (
+            <>
+              <ActionButton variant="secondary" icon={ShieldCheck} label={t('ads.privacy')} onPress={() => setConsentOpen(true)} />
+              {consent && <Text style={styles.note}>{t(consent.personalized ? 'ads.consentOn' : 'ads.consentOff')}</Text>}
+              <AdConsentModal visible={consentOpen} onChoose={chooseConsent} onClose={() => setConsentOpen(false)} />
+            </>
+          )}
+          <ActionButton
+            variant="secondary"
+            icon={FileText}
+            label={t('settings.privacyPolicy')}
+            onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => undefined)}
+          />
+        </View>
+
         {DEV_MENU && (
           <View style={styles.dev}>
             <Text style={styles.section}>{t('settings.dev')}</Text>
@@ -166,6 +200,7 @@ export default function SettingsScreen() {
               <ActionButton label={t('settings.devCrash')} variant="secondary" onPress={() => setCrash(true)} />
               {devMessage && <Text style={styles.devMessage}>{devMessage}</Text>}
             </View>
+            <AdDiagnosticsPanel />
           </View>
         )}
       </ScrollView>

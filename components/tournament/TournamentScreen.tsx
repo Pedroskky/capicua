@@ -15,6 +15,8 @@ import { RIVALS, isChampion, isUnlocked, pairReward } from '@/game/tournament';
 import { emptyPicture, record, solid, stroke } from '@/components/art/paint';
 import { drawPair } from '@/components/art/avatar';
 import { ActionButton } from '@/components/ui/ActionButton';
+import { ShareButtonImpl } from '@/components/share/ShareButtonImpl';
+import { championShareCard } from '@/components/share/cards';
 import { TabHeader } from '@/components/ui/TabHeader';
 import { FONTS, shadowText } from '@/components/ui/theme';
 import { useProgress } from '@/hooks/useProgress';
@@ -196,6 +198,7 @@ function Celebration({ onClose }: { onClose: () => void }) {
       <Text style={styles.champText}>{t('tour.championText')}</Text>
       <Text style={styles.champBonus}>{t('tour.championBonus', { n: TOURNAMENT.championBonus })}</Text>
       <ActionButton label={t('tour.close')} onPress={onClose} />
+      <ShareButtonImpl card={championShareCard()} />
     </View>
   );
 }
