@@ -1,20 +1,20 @@
 // Torneo del barrio: el camino de las 12 parejas (un solo lienzo Skia con el camino y los medallones; encima, en
 // React, el nombre, el estilo, el nivel, las estrellas y el botón). Candados hasta vencer a la anterior, y
 // celebración con confeti al ganar el torneo completo.
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Canvas, Picture, type SkPicture } from '@shopify/react-native-skia';
-import { useSharedValue } from 'react-native-reanimated';
 import { Lock, Star, Trophy } from 'lucide-react-native';
 import { COLORS, TOURNAMENT } from '@/game/config';
 import { createMatch } from '@/game/engine';
 import { toSavedMatch } from '@/game/savedMatch';
 import { RIVALS, isChampion, isUnlocked, pairReward } from '@/game/tournament';
-import { emptyPicture, record, solid, stroke } from '@/components/art/paint';
+import { record, solid, stroke } from '@/components/art/paint';
 import { drawPair } from '@/components/art/avatar';
 import { ActionButton } from '@/components/ui/ActionButton';
+import { Confetti } from '@/components/art/Confetti';
 import { ShareButtonImpl } from '@/components/share/ShareButtonImpl';
 import { championShareCard } from '@/components/share/cards';
 import { TabHeader } from '@/components/ui/TabHeader';
@@ -151,48 +151,11 @@ export default function TournamentScreen() {
   );
 }
 
-/** Celebración del campeón: confeti que cae (Skia, solo mientras está abierta) y el trofeo en texto. */
+/** Celebración del campeón: confeti que cae y el trofeo. */
 function Celebration({ onClose }: { onClose: () => void }) {
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  const empty = useMemo(() => emptyPicture(), []);
-  const frame = useSharedValue<SkPicture>(empty);
-  useEffect(() => {
-    if (size.w === 0) return;
-    const colors = ['#E9C46A', '#E76F51', '#2A9D8F', '#F4A261', '#FFFFFF', '#7FD1AE'];
-    const bits = Array.from({ length: 90 }, (_, i) => ({
-      x: (i * 97) % size.w,
-      y: -((i * 53) % size.h),
-      v: 60 + ((i * 31) % 90),
-      s: 4 + (i % 5),
-      c: colors[i % colors.length],
-      spin: (i % 7) / 7,
-    }));
-    const paints = colors.map((c) => solid(c));
-    let raf = 0;
-    let last = performance.now();
-    const loop = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      frame.value = record(size.w, size.h, (canvas) => {
-        for (const b of bits) {
-          b.y += b.v * dt;
-          b.x += Math.sin((now / 400) * (1 + b.spin)) * 0.6;
-          if (b.y > size.h + 10) b.y = -10;
-          canvas.drawRect({ x: b.x, y: b.y, width: b.s, height: b.s * 0.6 }, paints[colors.indexOf(b.c)]);
-        }
-      });
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [size, frame]);
   return (
-    <View style={styles.celebration} onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-      {size.w > 0 && (
-        <Canvas style={{ position: 'absolute', left: 0, top: 0, width: size.w, height: size.h }}>
-          <Picture picture={frame} />
-        </Canvas>
-      )}
+    <View style={styles.celebration}>
+      <Confetti />
       <Trophy size={80} color={COLORS.accent} strokeWidth={1.6} />
       <Text style={[styles.champTitle, shadowText]}>{t('tour.championTitle')}</Text>
       <Text style={styles.champText}>{t('tour.championText')}</Text>

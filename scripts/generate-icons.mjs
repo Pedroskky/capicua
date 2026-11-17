@@ -1,4 +1,4 @@
-// Icono, icono adaptativo, splash, favicon, icono de Google Play (512) e imagen destacada (1024×500).
+// Icono, icono adaptativo, splash, favicon, icono de Google Play (512) e imágenes destacadas (1024×500, es y en).
 // Una ficha doble seis con brillo sobre paño verde. Se dibuja con canvas 2D en Chromium (Playwright, como en
 // Templo Salvaje) para poder usar la fuente Lobster en la imagen destacada.
 // Uso: npm run icons → assets/images/*.png y store/*.png (se suben al repo).
@@ -85,7 +85,7 @@ function sparkles(ctx, cx, cy, size) {
   }
 }
 
-window.draw = (kind, w, h) => {
+window.draw = (kind, w, h, subtitle) => {
   const c = document.getElementById('c'); c.width = w; c.height = h;
   const ctx = c.getContext('2d'); ctx.clearRect(0, 0, w, h);
   if (kind === 'icon' || kind === 'play' || kind === 'favicon') {
@@ -107,7 +107,7 @@ window.draw = (kind, w, h) => {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = '150px Lobster'; ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillText('Capicúa', w * 0.51 + 5, h * 0.4 + 7);
     ctx.fillStyle = '#E9C46A'; ctx.fillText('Capicúa', w * 0.51, h * 0.4);
-    ctx.font = 'bold 32px sans-serif'; ctx.fillStyle = '#F4EFE1'; ctx.fillText('Dominó venezolano por parejas', w * 0.51, h * 0.7);
+    ctx.font = 'bold 32px sans-serif'; ctx.fillStyle = '#F4EFE1'; ctx.fillText(subtitle, w * 0.51, h * 0.7);
   }
   return c.toDataURL('image/png').split(',')[1];
 };
@@ -117,8 +117,8 @@ const browser = await chromium.launch();
 const tab = await browser.newPage();
 await tab.setContent(page);
 await tab.evaluate(() => document.fonts.load('150px Lobster'));
-async function out(path, kind, w, h) {
-  const b64 = await tab.evaluate(([k, ww, hh]) => window.draw(k, ww, hh), [kind, w, h]);
+async function out(path, kind, w, h, subtitle = '') {
+  const b64 = await tab.evaluate(([k, ww, hh, sub]) => window.draw(k, ww, hh, sub), [kind, w, h, subtitle]);
   writeFileSync(path, Buffer.from(b64, 'base64'));
 }
 await out('assets/images/icon.png', 'icon', 1024, 1024);
@@ -127,6 +127,8 @@ await out('assets/images/adaptive-icon-background.png', 'adaptiveBg', 1024, 1024
 await out('assets/images/splash-icon.png', 'splash', 512, 512);
 await out('assets/images/favicon.png', 'favicon', 64, 64);
 await out('store/play-icon-512.png', 'play', 512, 512);
-await out('store/feature-graphic.png', 'feature', 1024, 500);
+// Imagen destacada: en español (la de siempre) y en inglés.
+await out('store/feature-graphic.png', 'feature', 1024, 500, 'Dominó venezolano por parejas');
+await out('store/feature-graphic-en.png', 'feature', 1024, 500, 'Venezuelan partner dominoes');
 await browser.close();
 console.log('Iconos e imágenes de la tienda generados.');

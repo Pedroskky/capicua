@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "sounds": "node scripts/generate-sounds.mjs",
     "icons": "node scripts/generate-icons.mjs",
-    "check:android": "expo export --platform android --clear --output-dir dist-android"
+    "check:android": "expo export --platform android --clear --output-dir dist-android",
+    "store-shots": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning scripts/store-shots/index.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/lobster": "^0.4.1",
