@@ -1,3 +1,4 @@
+import { createAdInitialization } from '@/game/adInitialization';
 import {
   getStartioDiagnostics,
   initStartio,
@@ -26,6 +27,7 @@ function notify(): void {
 }
 
 function load(key: string): void {
+  if (!started) return;
   if (key === INTERSTITIAL) loadInterstitial(key);
   else loadRewarded(key);
 }
@@ -42,23 +44,27 @@ function scheduleRetry(key: string): void {
   );
 }
 
-export const startioBackend: AdsBackend = {
-  available: isStartioAvailable,
-
-  async init(personalized, testMode) {
-    if (!isStartioAvailable()) return false;
-    // El consentimiento va antes de iniciar el SDK.
-    setConsent(personalized);
-    if (started) return true;
+const initialize = createAdInitialization(
+  (testMode) => initStartio(STARTIO_APP_ID, testMode),
+  () => {
     started = true;
-    const ok = await initStartio(STARTIO_APP_ID, testMode);
     onAdStateChange((key) => {
       if (!isAdReady(key)) scheduleRetry(key);
       notify();
     });
     load(INTERSTITIAL);
     load(REWARDED);
-    return ok;
+  },
+);
+
+export const startioBackend: AdsBackend = {
+  available: isStartioAvailable,
+
+  async init(personalized, testMode) {
+    if (!isStartioAvailable()) return false;
+    // Se recoge antes del inicio y se reporta tras el callback nativo.
+    await setConsent(personalized);
+    return initialize(testMode);
   },
 
   setConsent,

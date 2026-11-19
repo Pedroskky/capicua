@@ -25,6 +25,8 @@ import expo.modules.kotlin.modules.ModuleDefinition
 class StartioAdsModule : Module() {
   private val ads = mutableMapOf<String, StartAppAd>()
   private var initialized = false
+  private var initializing = false
+  private var pendingConsent: Pair<Boolean, Long>? = null
 
   // Diagnóstico (Ajustes → Desarrollo → «Diagnóstico de anuncios»).
   private var initAppId: String? = null
@@ -46,21 +48,28 @@ class StartioAdsModule : Module() {
 
     Events("onAdLoaded", "onAdFailed", "onAdClosed", "onRewardEarned")
 
-    // Consentimiento GDPR para anuncios personalizados ("pas"). Se llama antes de init y cada vez que cambia.
-    Function("setConsent") { personalized: Boolean ->
-      StartAppSDK.setUserConsent(context, "pas", System.currentTimeMillis(), personalized)
-    }
+    // La elección se recoge antes de init. La API de Start.io puede pedir metadatos al reportarla.
+    AsyncFunction("setConsent") { personalized: Boolean ->
+      pendingConsent = personalized to System.currentTimeMillis()
+      if (initialized) reportPendingConsent() else true
+    }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("init") { appId: String, testMode: Boolean, promise: Promise ->
       if (initialized) {
-        promise.resolve(true)
+        promise.resolve(reportPendingConsent())
         return@AsyncFunction
       }
-      // El SDK ya se arrancó solo con el App ID del manifiesto (app.plugin.js); aquí se usa el mismo.
+      // El timeout de JS no cancela el intento nativo.
+      if (initializing) {
+        promise.resolve(false)
+        return@AsyncFunction
+      }
+      // Único inicio manual: app.plugin.js retira ambas entradas automáticas del manifiesto.
       // Si JS no manda nada válido, se usa el del manifiesto: nunca se inicia con un App ID vacío.
       val manifestId = manifestAppId()
       val fromJs = appId.trim().takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
       val id = fromJs ?: manifestId?.trim()?.takeIf { it.isNotEmpty() && it.all(Char::isDigit) } ?: ""
+      initError = null
       initAppId = id.ifEmpty { appId }
       initTestMode = testMode
       if (id.isEmpty()) {
@@ -69,6 +78,7 @@ class StartioAdsModule : Module() {
         return@AsyncFunction
       }
       if (manifestId != null && manifestId != id) initError = "App ID distinto del manifiesto ($manifestId)"
+      initializing = true
       try {
         StartAppSDK.setTestAdsEnabled(testMode)
         StartAppAd.disableSplash()
@@ -79,10 +89,12 @@ class StartioAdsModule : Module() {
           .setReturnAdsEnabled(false)
           .setCallback {
             initialized = true
-            promise.resolve(true)
+            initializing = false
+            promise.resolve(reportPendingConsent())
           }
           .init()
       } catch (error: Throwable) {
+        initializing = false
         initError = error.message ?: error.javaClass.simpleName
         promise.resolve(false)
       }
@@ -104,6 +116,12 @@ class StartioAdsModule : Module() {
 
     // Carga un anuncio en un hueco. rewarded = vídeo con recompensa; si no, intersticial.
     AsyncFunction("load") { key: String, rewarded: Boolean ->
+      if (!initialized || pendingConsent != null) {
+        val message = "SDK no listo para cargar anuncios"
+        lastAd(key, "failed", message)
+        sendEvent("onAdFailed", eventBody(key).apply { putString("message", message) })
+        return@AsyncFunction
+      }
       val ad = StartAppAd(adContext)
       ads[key] = ad
       if (rewarded) {
@@ -147,6 +165,18 @@ class StartioAdsModule : Module() {
         }
       })
     }.runOnQueue(Queues.MAIN)
+  }
+
+  private fun reportPendingConsent(): Boolean {
+    val (personalized, timestamp) = pendingConsent ?: return true
+    return try {
+      StartAppSDK.setUserConsent(context, "pas", timestamp, personalized)
+      pendingConsent = null
+      true
+    } catch (error: Throwable) {
+      initError = error.message ?: error.javaClass.simpleName
+      false
+    }
   }
 
   private fun lastAd(key: String, result: String, message: String?) {

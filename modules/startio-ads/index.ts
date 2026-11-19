@@ -1,3 +1,4 @@
+import { waitForAdInitialization } from '@/game/adInitialization';
 import { Platform } from 'react-native';
 import { requireOptionalNativeModule } from 'expo';
 
@@ -15,7 +16,7 @@ type StartioAdsEvents = {
 };
 
 interface StartioAdsNative {
-  setConsent(personalized: boolean): void;
+  setConsent(personalized: boolean): Promise<boolean>;
   init(appId: string, testMode: boolean): Promise<boolean>;
   load(key: string, rewarded: boolean): Promise<void>;
   isReady(key: string): boolean;
@@ -63,24 +64,19 @@ export function isStartioAvailable(): boolean {
   return native !== null;
 }
 
-/** GDPR: anuncios personalizados sí/no. Llamar antes de initStartio y cada vez que cambie. */
-export function setConsent(personalized: boolean): void {
+/** Guarda la elección antes de initStartio y vuelve a reportarla cada vez que cambie. */
+export async function setConsent(personalized: boolean): Promise<void> {
   try {
-    native?.setConsent(personalized);
+    await native?.setConsent(personalized);
   } catch {
     // Sin anuncios.
   }
 }
 
-/** Inicia el SDK. Sin respuesta en INIT_TIMEOUT_MS se sigue igualmente (los anuncios fallarán al cargar). */
+/** Sin confirmación del SDK dentro del plazo no se autoriza la carga de anuncios. */
 export async function initStartio(appId: string, testMode: boolean): Promise<boolean> {
   if (!native) return false;
-  try {
-    const timeout = new Promise<boolean>((resolve) => setTimeout(() => resolve(true), INIT_TIMEOUT_MS));
-    return await Promise.race([native.init(appId, testMode), timeout]);
-  } catch {
-    return false;
-  }
+  return waitForAdInitialization(() => native!.init(appId, testMode), INIT_TIMEOUT_MS);
 }
 
 /** Diagnóstico del SDK. Sin módulo nativo (web, Expo Go) todo sale vacío. */

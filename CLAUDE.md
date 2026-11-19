@@ -92,3 +92,8 @@ La web no avisa de muchos fallos que en el APK cierran la app al abrirla **sin n
 ## Notas
 - Ver la web: `npm run build:web` y servir `dist/` con fallback a `index.html`. Si cambias una variable `EXPO_PUBLIC_*`, exporta con `--clear` (Metro guarda en caché el valor).
 - En web el navegador no deja sonar la música hasta el primer toque.
+
+## Actualización Start.io — 19 de noviembre de 2026
+Esta rama sustituye el inicio automático descrito arriba por un único inicio manual. El config plugin retira StartAppInitProvider y BootCompleteListener, mantiene el App ID 210753000 y desactiva splash y return ads. El puente recoge el consentimiento antes de init y lo reporta después del callback, antes de cargar. El timeout de JavaScript devuelve false; los intentos simultáneos se comparten y no se precargan anuncios sin éxito.
+
+Se adapta la corrección de office-smash 7380774678a3f6028a0d88a6aeaeb435b54d667a. Se conservan App ID, frecuencia, huecos de recompensa, claves de progreso y perfiles EAS. La adaptación está pendiente de la suite completa, TypeScript, exports web/Android, manifiesto fusionado y prueba física; no se considera validada en Android por copiar el código. No abrir PR ni fusionar hasta completar las verificaciones del proyecto.

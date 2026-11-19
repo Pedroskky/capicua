@@ -1,11 +1,8 @@
-// Config plugin del módulo de Start.io: escribe el App ID en el AndroidManifest de la app.
+// Config plugin de Start.io: conserva el App ID para diagnóstico y usa un único inicio manual.
+// Retira las entradas de inicio automático del SDK. El módulo Kotlin activa el modo de prueba
+// antes de initParams y reporta el consentimiento tras el callback, antes de cargar anuncios.
 //
-// Por qué hace falta: el SDK de Start.io trae un ContentProvider (StartAppInitProvider) que lo arranca
-// solo al abrirse la app, antes de que exista JavaScript, y en ese momento lee el App ID de la meta-data
-// `com.startapp.sdk.APPLICATION_ID`. Sin ella, el SDK sale con el App ID «undefined» y el panel de
-// Start.io no cuenta los pedidos de anuncios de este juego (ni impresiones ni ingresos).
-//
-// Uso en app.json: ["./modules/startio-ads/app.plugin.js", { "appId": "210380064" }]
+// Uso en app.json: ["./modules/startio-ads/app.plugin.js", { "appId": "210753000" }]
 const { AndroidConfig, withAndroidManifest } = require('@expo/config-plugins');
 
 const APP_ID_KEY = 'com.startapp.sdk.APPLICATION_ID';
@@ -24,11 +21,31 @@ function validAppId(appId) {
   return id.trim();
 }
 
+/** Marca un componente heredado del SDK para que el merger lo retire. */
+function removeSdkComponent(components, name, attributes = {}) {
+  let component = components.find((item) => item.$?.['android:name'] === name);
+  if (!component) {
+    component = { $: {} };
+    components.push(component);
+  }
+  component.$ = { ...component.$, ...attributes, 'android:name': name, 'tools:node': 'remove' };
+}
+
 /** Añade (o sustituye) la meta-data del App ID en el <application> del manifiesto. */
 function setStartioMetaData(androidManifest, appId) {
   const app = AndroidConfig.Manifest.getMainApplicationOrThrow(androidManifest);
+  // Usamos inicio manual para que el SDK arranque con la configuración del juego.
+  // El proveedor y el receptor de reinicio del AAR llaman al mismo inicio automático.
+  androidManifest.manifest.$ ??= {};
+  androidManifest.manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
+  removeSdkComponent(app.provider ??= [], 'com.startapp.sdk.adsbase.StartAppInitProvider', {
+    'android:authorities': '${applicationId}.startappinitprovider',
+  });
+  removeSdkComponent(app.receiver ??= [], 'com.startapp.sdk.adsbase.remoteconfig.BootCompleteListener');
   AndroidConfig.Manifest.addMetaDataItemToMainApplication(app, APP_ID_KEY, validAppId(appId));
   AndroidConfig.Manifest.addMetaDataItemToMainApplication(app, CONSENT_KEY, 'false');
+  AndroidConfig.Manifest.addMetaDataItemToMainApplication(app, 'com.startapp.sdk.RETURN_ADS_ENABLED', 'false');
+  AndroidConfig.Manifest.addMetaDataItemToMainApplication(app, 'com.startapp.sdk.SPLASH_ENABLED', 'false');
   return androidManifest;
 }
 
